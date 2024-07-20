@@ -1,0 +1,2 @@
+datasource_xlsx_path: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data_sources/patient_infos.xlsx'
+xlsx2json_output_save_path: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data_sources/patient_infos_dangerous_factors.json'

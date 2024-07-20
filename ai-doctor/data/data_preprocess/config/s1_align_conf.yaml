@@ -1,6 +1,9 @@
 file_name:
-  data: 'patient_infos.xlsx'
+  org_data_xlsx: 'patient_infos.xlsx'
   abbr_mapping: 'abbr_mapping.xlsx'
+  org_data_json: 'patient_infos_{}.json'
+  word_data_json: 'patient_infos_{}_word.json'
 file_path:
-  load: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/'
+  load: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
+  save_org_json: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
   save: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/'

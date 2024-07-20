@@ -1,6 +1,47 @@
 import json, yaml, os
 import pandas as pd
 
+# 1 load config
+conf_path = r'/config/s1_align_conf.yaml'
+with open(os.path.dirname(__file__) + conf_path, 'r') as s1_yaml:
+    s1_conf = yaml.safe_load(s1_yaml)
+file_pathes = s1_conf['file_path']
+file_names = s1_conf['file_name']
+load_path = file_pathes['load']
+save_org_json_path = file_pathes['save_org_json']
+save_path = file_pathes['save']
+
+
+def trans_org_xlsx_to_json():
+    am_df = pd.read_excel(load_path + file_names['abbr_mapping'], sheet_name=0)
+    abbr_map = dict(zip(am_df[am_df.columns[0]], am_df[am_df.columns[1]]))
+    # print(abbr_map)
+    df = pd.read_excel(load_path + file_names['org_data_xlsx'], sheet_name=None)
+    sheet_names = list(df.keys())
+    print(sheet_names)
+
+    for sh_name in sheet_names:
+        sh_df = df[sh_name]
+        # print(sh_df.columns)
+        sh_df.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in sh_df.columns]
+        # print(sh_df.columns)
+        # file_uid = sh_name.split('.')[1] if len(sh_name.split('.')) > 1 else sh_name
+        # print((save_path + file_names['org_data_json']).format(sh_name.replace('.', '_')))
+        sh_df.to_json((save_org_json_path + file_names['org_data_json']).format(sh_name.replace('.', '_')),
+                      orient='records', force_ascii=False)
+
+# def replace_indicator_to_word():
+#     # print(abbr_map)
+#     df = pd.read_excel(load_path + file_names['org_data_json'], sheet_name=None)
+#     sheet_names = list(df.keys())
+#     print(sheet_names)
+#
+#     for sh_name in sheet_names:
+#         sh_df = df[sh_name]
+#         for col in sh_df.columns:
+#             print(col)
+        # sh_df.to_json((save_org_json_path + file_names['org_data_json']).format(sh_name.replace('.', '_')),
+        #               orient='records', force_ascii=False)
 
 def handle_dangerous_factors(conf):
     # 2 open and load xlsx (require xlrd==1.2.0)
@@ -21,30 +62,19 @@ def handle_sheet2(wb, conf):
 
 
 def main():
-    conf_path = r'/config/s1_align_conf.yaml'
-    # 1 load config
-    with open(os.path.dirname(__file__) + conf_path, 'r') as s1_yaml:
-        s1_conf = yaml.safe_load(s1_yaml)
-    file_pathes = s1_conf['file_path']
-    file_names = s1_conf['file_name']
-    load_path = file_pathes['load']
-    save_path = file_pathes['save']
+    trans_org_xlsx_to_json()  # transfer original data format from .xlsx to .json
+    # replace_indicator_to_word()  # replace indicator from number to word
 
-    am_df = pd.read_excel(load_path + file_names['abbr_mapping'], sheet_name=0)
-    abbr_map = dict(zip(am_df[am_df.columns[0]], am_df[am_df.columns[1]]))
-    # print(abbr_map)
-    df = pd.read_excel(load_path + file_names['data'], sheet_name=None)
-    sheet_names = list(df.keys())
-    for sheet_name in sheet_names:
-        sh_df = df[sheet_name]
-        print(sh_df.columns)
-        sh_df.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in sh_df.columns]
-        print(sh_df.columns)
-        # col_names = sh_df.columns.values.tolist()
-        # print(col_names)
-        # print(type(col_names))
-        # for col_name in col_names:
-        #     print(col_name)
+
+# 1 id
+
+# 2 conversation
+
+# col_names = sh_df.columns.values.tolist()
+# print(col_names)
+# print(type(col_names))
+# for col_name in col_names:
+#     print(col_name)
 
 
 if __name__ == '__main__':

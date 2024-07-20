@@ -21,12 +21,30 @@ def handle_sheet2(wb, conf):
 
 
 def main():
+    conf_path = r'/config/s1_align_conf.yaml'
     # 1 load config
-    with open(os.path.dirname(__file__) + r'/config/s1_align_conf.yaml', 'r') as s1_yaml:
+    with open(os.path.dirname(__file__) + conf_path, 'r') as s1_yaml:
         s1_conf = yaml.safe_load(s1_yaml)
+    file_pathes = s1_conf['file_path']
+    file_names = s1_conf['file_name']
+    load_path = file_pathes['load']
+    save_path = file_pathes['save']
 
-    # 3 handle sheets
-    handle_dangerous_factors(s1_conf)
+    am_df = pd.read_excel(load_path + file_names['abbr_mapping'], sheet_name=0)
+    abbr_map = dict(zip(am_df[am_df.columns[0]], am_df[am_df.columns[1]]))
+    # print(abbr_map)
+    df = pd.read_excel(load_path + file_names['data'], sheet_name=None)
+    sheet_names = list(df.keys())
+    for sheet_name in sheet_names:
+        sh_df = df[sheet_name]
+        print(sh_df.columns)
+        sh_df.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in sh_df.columns]
+        print(sh_df.columns)
+        # col_names = sh_df.columns.values.tolist()
+        # print(col_names)
+        # print(type(col_names))
+        # for col_name in col_names:
+        #     print(col_name)
 
 
 if __name__ == '__main__':

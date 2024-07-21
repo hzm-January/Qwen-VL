@@ -2,8 +2,17 @@ file_name:
   org_data_xlsx: 'patient_infos.xlsx'
   abbr_mapping: 'abbr_mapping.xlsx'
   org_data_json: 'patient_infos_{}.json'
-  word_data_json: 'patient_infos_{}_word.json'
+  word_data_json: 'patient_infos_word_{}.json'
+  align_finetune_dataset_json: 'align_finetune_dataset.json'
 file_path:
   load: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
-  save_org_json: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
-  save: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/'
+  save_org: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
+  save_word: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/word_data/'
+  save_align_finetune_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/align/'
+prompt:
+  finetune_align_prefix: '假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：\n'
+  finetune_align_suffix: "Let's think step by step."
+
+
+
+

@@ -1,5 +1,7 @@
-import json, yaml, os
+import json, yaml, os, glob, uuid
 import pandas as pd
+from config.map_dictor_to_word import W_Mapping, TYPE_INFO, TYPE_INDC
+from config.map_dictor_to_description import D_Mapping
 
 # 1 load config
 conf_path = r'/config/s1_align_conf.yaml'
@@ -8,8 +10,9 @@ with open(os.path.dirname(__file__) + conf_path, 'r') as s1_yaml:
 file_pathes = s1_conf['file_path']
 file_names = s1_conf['file_name']
 load_path = file_pathes['load']
-save_org_json_path = file_pathes['save_org_json']
-save_path = file_pathes['save']
+save_org_json_path = file_pathes['save_org']
+save_word_json_path = file_pathes['save_word']
+save_align_finetune_dataset_path = file_pathes['save_align_finetune_dataset']
 
 
 def trans_org_xlsx_to_json():
@@ -30,40 +33,113 @@ def trans_org_xlsx_to_json():
         sh_df.to_json((save_org_json_path + file_names['org_data_json']).format(sh_name.replace('.', '_')),
                       orient='records', force_ascii=False)
 
-# def replace_indicator_to_word():
-#     # print(abbr_map)
-#     df = pd.read_excel(load_path + file_names['org_data_json'], sheet_name=None)
-#     sheet_names = list(df.keys())
-#     print(sheet_names)
-#
-#     for sh_name in sheet_names:
-#         sh_df = df[sh_name]
-#         for col in sh_df.columns:
-#             print(col)
-        # sh_df.to_json((save_org_json_path + file_names['org_data_json']).format(sh_name.replace('.', '_')),
+
+def replace_indicator_to_word():
+    am_df = pd.read_excel(load_path + file_names['abbr_mapping'], sheet_name=0)
+    abbr_map = dict(zip(am_df[am_df.columns[0]], am_df[am_df.columns[1]]))
+    df = pd.read_excel(load_path + file_names['org_data_xlsx'], sheet_name=None)
+    sheet_names = list(df.keys())
+    print(sheet_names)
+    patients_info = []
+    for sh_name in sheet_names:
+        sh_df = df[sh_name]
+        file_uid = sh_name.split('.')[1] + '_Mapping' if len(sh_name.split('.')) > 1 else sh_name
+        mapping = W_Mapping[file_uid]
+        if mapping["type"] == TYPE_INFO:
+            for k, v in mapping["rule"].items():
+                sh_df[k] = sh_df[k].replace(v)
+        elif mapping["type"] == TYPE_INDC:
+            for k, v in mapping["rule"].items():
+                if not v: continue
+                sh_df[k] = pd.cut(sh_df[k], bins=v["bins"], labels=v["labels"], right=False, include_lowest=False)
+        else:
+            print("ERROR: this type is not defined......")
+        sh_df.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in sh_df.columns]
+
+        # # save to file
+        # sh_df.to_json((save_word_json_path + file_names['word_data_json']).format(sh_name.replace('.', '_')),
         #               orient='records', force_ascii=False)
-
-def handle_dangerous_factors(conf):
-    # 2 open and load xlsx (require xlrd==1.2.0)
-    df = pd.read_excel(conf['datasource_xlsx_path'], sheet_name=0)
-    print('sheet index: %d, row count: %s, column count: %s' % (0, df.shape[0], df.shape[1]))  # sheet info
-    # print(df.values[0, :])
-    col_0_label = df.iloc[:, 0]
-    col_x_data = df.iloc[:, 1:]
-    # col_x_data.to_json(conf['xlsx2json_output_save_path'], orient='records', force_ascii=False)
+        patients_info.append(json.loads(sh_df.to_json(orient='records', force_ascii=False)))
+    return patients_info
 
 
-def handle_sheet1(wb, conf):
-    print()
+def process_row(row, rule_map, abbr_map):
+    row_data = []
+    # if rule_map['type'] == TYPE_INFO:
+    #     return row.values
+    for col in row.index:
+        col_full_name = abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col
+        if col_full_name == "label": continue
+        if rule_map['type'] == TYPE_INFO and col in rule_map['rule']:
+            row_data.append(row[col])
+        else:
+            row_data.append(f"{col_full_name}为{row[col]}")
+    return ','.join(row_data) + '。'
 
 
-def handle_sheet2(wb, conf):
-    print()
+def replace_indicator_to_description():
+    am_df = pd.read_excel(load_path + file_names['abbr_mapping'], sheet_name=0)
+    abbr_map = dict(zip(am_df[am_df.columns[0]], am_df[am_df.columns[1]]))
+    df = pd.read_excel(load_path + file_names['org_data_xlsx'], sheet_name=None)
+    sheet_names = list(df.keys())
+    print(sheet_names)
+    patients_info = []
+    for sh_name in sheet_names:
+        sh_df = df[sh_name]
+        file_uid = sh_name.split('.')[1] + '_Mapping' if len(sh_name.split('.')) > 1 else sh_name
+        rule_map = D_Mapping[file_uid]
+        if rule_map["type"] == TYPE_INFO:
+            for k, v in rule_map["rule"].items():
+                sh_df[k] = sh_df[k].replace(v)
+        elif rule_map["type"] == TYPE_INDC:
+            for k, v in rule_map["rule"].items():
+                if not v: continue
+                sh_df[k] = pd.cut(sh_df[k], bins=v["bins"], labels=v["labels"], right=False, include_lowest=False)
+        else:
+            print("ERROR: this type is not defined......")
+        patients_disease_description = sh_df.apply(lambda row: process_row(row, rule_map, abbr_map), axis=1)
+        patients_info.append(patients_disease_description.values)
+
+    return patients_info
+    # patient_cnt = min([len(p) for p in patients_info])
+    #
+    # dataset = []
+    # for i in range(patient_cnt):
+    #     patient_description = {'id': uuid.uuid4(),
+    #                            'conversations': [{'from': 'user', 'value': ''}, {'from': 'assistant', 'value': ''}]}
+    #     user_value =
+    # sh_df.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in sh_df.columns]
+    # sh_df.to_json((save_word_json_path + file_names['word_data_json']).format(sh_name.replace('.', '_')),
+    #               orient='records', force_ascii=False)
+
+
+def create_finetune_dataset():
+    patients_word_infos = replace_indicator_to_word()
+    patients_description_infos = replace_indicator_to_description()
+    patient_cnt = min([len(p) for p in patients_word_infos])
+    dataset = []
+    for i in range(patient_cnt):
+        user_value = s1_conf['prompt']['finetune_align_prefix'] + str(patients_word_infos[0][i])
+        user_description = patients_description_infos[0][i]
+        patient_description = {'id': str(uuid.uuid4()),
+                               'conversations': [{'from': 'user', 'value': user_value},
+                                                 {'from': 'assistant', 'value': user_description}]}
+
+        # print(user_value)
+        # print(user_description)
+        # print(patient_description)
+        dataset.append(patient_description)
+
+    return dataset
 
 
 def main():
-    trans_org_xlsx_to_json()  # transfer original data format from .xlsx to .json
+    # trans_org_xlsx_to_json()  # transfer original data format from .xlsx to .json
     # replace_indicator_to_word()  # replace indicator from number to word
+    # replace_indicator_to_description()  # replace indicator from number to description
+    dataset = create_finetune_dataset()
+    with open(save_align_finetune_dataset_path + file_names['align_finetune_dataset_json'], 'w') as f:
+        json.dump(dataset, f, ensure_ascii=False)
 
 
 # 1 id

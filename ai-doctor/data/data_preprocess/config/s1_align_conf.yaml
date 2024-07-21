@@ -10,7 +10,7 @@ file_path:
   save_word: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/word_data/'
   save_align_finetune_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/align/'
 prompt:
-  finetune_align_prefix: '假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：\n'
+  finetune_align_prefix: '假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：'
   finetune_align_suffix: "Let's think step by step."
 
 

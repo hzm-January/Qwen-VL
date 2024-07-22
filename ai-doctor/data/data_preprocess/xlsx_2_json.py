@@ -113,7 +113,7 @@ def replace_indicator_to_description():
     #               orient='records', force_ascii=False)
 
 
-def create_finetune_dataset():
+def create_finetune_dataset_align():
     patients_word_infos = replace_indicator_to_word()
     patients_description_infos = replace_indicator_to_description()
     patient_cnt = min([len(p) for p in patients_word_infos])
@@ -123,7 +123,28 @@ def create_finetune_dataset():
         user_description = patients_description_infos[0][i]
         patient_description = {'id': str(uuid.uuid4()),
                                'conversations': [{'from': 'user', 'value': user_value},
-                                                 {'from': 'assistant', 'value': user_description}]}
+                                                 {'from': 'assistant', 'value': user_description}],
+                               'type': 'stage2'}
+
+        # print(user_value)
+        # print(user_description)
+        # print(patient_description)
+        dataset.append(patient_description)
+
+    return dataset
+
+def create_finetune_dataset_pred():
+    patients_word_infos = replace_indicator_to_word()
+    patients_description_infos = replace_indicator_to_description()
+    patient_cnt = min([len(p) for p in patients_word_infos])
+    dataset = []
+    for i in range(patient_cnt):
+        user_value = s1_conf['prompt']['finetune_align_prefix'] + str(patients_word_infos[0][i])
+        user_description = patients_description_infos[0][i]
+        patient_description = {'id': str(uuid.uuid4()),
+                               'conversations': [{'from': 'user', 'value': user_value},
+                                                 {'from': 'assistant', 'value': user_description}],
+                               'type': 'stage2'}
 
         # print(user_value)
         # print(user_description)
@@ -137,9 +158,14 @@ def main():
     # trans_org_xlsx_to_json()  # transfer original data format from .xlsx to .json
     # replace_indicator_to_word()  # replace indicator from number to word
     # replace_indicator_to_description()  # replace indicator from number to description
-    dataset = create_finetune_dataset()
-    with open(save_align_finetune_dataset_path + file_names['align_finetune_dataset_json'], 'w') as f:
-        json.dump(dataset, f, ensure_ascii=False)
+
+    # # TODO: 1 create finetune-stage-1 dataset for aligning tabel with text
+    # dataset = create_finetune_dataset_align()
+    # with open(save_align_finetune_dataset_path + file_names['align_finetune_dataset_json'], 'w') as f:
+    #     json.dump(dataset, f, ensure_ascii=False)
+
+    # # TODO: 2 create finetune-stage-2 dataset for prediction
+    dataset = create_finetune_dataset_pred()
 
 
 # 1 id

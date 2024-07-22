@@ -3,17 +3,7 @@ from modelscope import (
     snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 )
 
-model_id = 'qwen/Qwen-VL-Chat'
-
-# download models to custom path
-cache_dir = "/data1/llm/houzm/98-model/01-qwen-vl-chat"
-
-# create the directory if it does not exist
-if not os.path.exists(cache_dir):
-    os.makedirs(cache_dir)
-
-model_dir = snapshot_download(model_id, cache_dir=cache_dir)
-torch.manual_seed(1234)
+model_dir = '/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/align/20240721-211309/'
 
 tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 if not hasattr(tokenizer, 'model_dir'):
@@ -39,15 +29,16 @@ model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="cuda:0", tru
 #     "'泪液分泌实验': '6', '您是否发生过皮肤排异': '是', '您是否发生过口腔排异': '是', '您是否发生过肠道排异': '否', '您是否发生过肺排异': '否', "
 #     "'您是否发生过肝排异': '否', '哭时，是否有眼泪': '是', '哭时有眼泪-流泪时感觉': '1', '哭时无眼泪-无泪时感觉': '1', '使用电子产品类型': '手机', "
 #     "'每天平均电子产品使用时间': ''}\n")
+
 query = (
     "<|extra_0|>假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：\n{"
     "'性别': '男', '年龄': '61', '眼别': '左眼', '眼表疾病指数量表': '43.18', '角膜荧光染色评分': '0', '泪膜破裂时间': '3', '泪河高度': '0.2', "
     "'泪液分泌实验': '6', '您是否发生过皮肤排异': '是', '您是否发生过口腔排异': '是', '您是否发生过肠道排异': '否', '您是否发生过肺排异': '否', "
-    "'您是否发生过肝排异': '否', '哭时，是否有眼泪': '是', '哭时有眼泪-流泪时感觉': '', '哭时无眼泪-无泪时感觉': '', '使用电子产品类型': '', '每天平均电子产品使用时间': ''}<|extra_1|>\n"
+    "'您是否发生过肝排异': '否', '哭时，是否有眼泪': '是', '哭时有眼泪-流泪时感觉': '1', '哭时无眼泪-无泪时感觉': '1', '使用电子产品类型': '手机', "
+    "'每天平均电子产品使用时间': '10'}<|extra_1|>\n"
     "请根据诊断信息，判断患者是否患有慢性移植物抗宿主病。\n"
     "已知诊断是否患有慢性移植物抗宿主病的依据为：眼表疾病指数量表、角膜荧光染色评分、泪河高度、泪膜破裂时间、泪液分泌实验等指标是否异常，裂隙灯显微镜下是否发现干燥性角膜结膜炎表现"
     "（结膜充血、水肿、荧光素钠染色后角膜上皮点染等），同时考虑哭时是否有眼泪等病史情况，以及本疾病系统性的存在与否。")
-# , "answer": "检查结果为：未发生排异", "question_id": "2_陈继东20-8-29左眼"}
 
 response, history = model.chat(tokenizer, query=query, history=None)
 print(response)

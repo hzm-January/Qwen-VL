@@ -13,6 +13,8 @@ load_path = file_pathes['load']
 save_org_json_path = file_pathes['save_org']
 save_word_json_path = file_pathes['save_word']
 save_align_finetune_dataset_path = file_pathes['save_align_finetune_dataset']
+save_diagnose_finetune_dataset_path = file_pathes['save_diagnose_finetune_dataset']
+fine_tune_diagnose_conf = s1_conf['fine_tune']['diagnose']
 
 
 def trans_org_xlsx_to_json():
@@ -41,26 +43,32 @@ def replace_indicator_to_word():
     sheet_names = list(df.keys())
     print(sheet_names)
     patients_info = []
+    labels_info = []
     for sh_name in sheet_names:
         sh_df = df[sh_name]
+        sh_df_label = sh_df.iloc[:, 0]
+        sh_df_data = sh_df.iloc[:, 1:]
         file_uid = sh_name.split('.')[1] + '_Mapping' if len(sh_name.split('.')) > 1 else sh_name
         mapping = W_Mapping[file_uid]
         if mapping["type"] == TYPE_INFO:
             for k, v in mapping["rule"].items():
-                sh_df[k] = sh_df[k].replace(v)
+                sh_df_data[k] = sh_df_data[k].replace(v)
         elif mapping["type"] == TYPE_INDC:
             for k, v in mapping["rule"].items():
-                if not v: continue
-                sh_df[k] = pd.cut(sh_df[k], bins=v["bins"], labels=v["labels"], right=False, include_lowest=False)
+                if not v: continue  # continue if indicator doesn't have rules
+                sh_df_data[k] = pd.cut(sh_df_data[k], bins=v["bins"], labels=v["labels"], right=False,
+                                       include_lowest=False)
         else:
             print("ERROR: this type is not defined......")
-        sh_df.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in sh_df.columns]
+        sh_df_data.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in
+                              sh_df_data.columns]
 
         # # save to file
         # sh_df.to_json((save_word_json_path + file_names['word_data_json']).format(sh_name.replace('.', '_')),
         #               orient='records', force_ascii=False)
-        patients_info.append(json.loads(sh_df.to_json(orient='records', force_ascii=False)))
-    return patients_info
+        patients_info.append(json.loads(sh_df_data.to_json(orient='records', force_ascii=False)))
+        labels_info.append(sh_df_label.values.tolist())
+    return patients_info, labels_info
 
 
 def process_row(row, rule_map, abbr_map):
@@ -114,7 +122,7 @@ def replace_indicator_to_description():
 
 
 def create_finetune_dataset_align():
-    patients_word_infos = replace_indicator_to_word()
+    patients_word_infos, _ = replace_indicator_to_word()
     patients_description_infos = replace_indicator_to_description()
     patient_cnt = min([len(p) for p in patients_word_infos])
     dataset = []
@@ -133,25 +141,33 @@ def create_finetune_dataset_align():
 
     return dataset
 
-def create_finetune_dataset_pred():
-    patients_word_infos = replace_indicator_to_word()
-    patients_description_infos = replace_indicator_to_description()
+
+def create_finetune_dataset_diagnose():
+    patients_word_infos, labels_infos = replace_indicator_to_word()
     patient_cnt = min([len(p) for p in patients_word_infos])
-    dataset = []
+    train_dataset = []
+    test_dataset = []
+    ratio = patient_cnt * fine_tune_diagnose_conf['train_data_ratio']
     for i in range(patient_cnt):
-        user_value = s1_conf['prompt']['finetune_align_prefix'] + str(patients_word_infos[0][i])
-        user_description = patients_description_infos[0][i]
+        user_value = (s1_conf['prompt']['finetune_align_prefix']
+                      + str(patients_word_infos[0][i])
+                      + "。"
+                      + s1_conf['prompt']['finetune_diagnose_require'])
+        ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
         patient_description = {'id': str(uuid.uuid4()),
                                'conversations': [{'from': 'user', 'value': user_value},
-                                                 {'from': 'assistant', 'value': user_description}],
-                               'type': 'stage2'}
+                                                 {'from': 'assistant', 'value': ass_value}],
+                               'type': 'stage3'}
 
         # print(user_value)
         # print(user_description)
         # print(patient_description)
-        dataset.append(patient_description)
+        if i < ratio:
+            train_dataset.append(patient_description)
+        else:
+            test_dataset.append(patient_description)
 
-    return dataset
+    return train_dataset, test_dataset
 
 
 def main():
@@ -165,7 +181,9 @@ def main():
     #     json.dump(dataset, f, ensure_ascii=False)
 
     # # TODO: 2 create finetune-stage-2 dataset for prediction
-    dataset = create_finetune_dataset_pred()
+    train_dataset, test_dataset = create_finetune_dataset_diagnose()
+    with open(save_diagnose_finetune_dataset_path + file_names['diagnose_finetune_dataset_json'], 'w') as f:
+        json.dump(train_dataset, f, ensure_ascii=False)
 
 
 # 1 id

@@ -8,6 +8,9 @@ import math
 from typing import TYPE_CHECKING, Optional, Tuple, Union, Callable, List, Any, Generator
 
 import torch
+import torch.nn as nn
+import numpy as np
+
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.cuda.amp import autocast
@@ -46,7 +49,6 @@ from .qwen_generation_utils import (
 )
 from .visual import VisionTransformer
 
-
 logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "qwen"
@@ -73,7 +75,7 @@ rms_norm = None
 
 # Copied from transformers.models.bart.modeling_bart._make_causal_mask
 def _make_causal_mask(
-    input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
+        input_ids_shape: torch.Size, dtype: torch.dtype, device: torch.device, past_key_values_length: int = 0
 ):
     """
     Make causal mask used for bi-directional self-attention.
@@ -122,7 +124,7 @@ class QWenAttention(nn.Module):
 
         assert self.projection_size % config.num_attention_heads == 0
         self.hidden_size_per_attention_head = (
-            self.projection_size // config.num_attention_heads
+                self.projection_size // config.num_attention_heads
         )
 
         self.c_attn = nn.Linear(config.hidden_size, 3 * self.projection_size)
@@ -183,7 +185,7 @@ class QWenAttention(nn.Module):
         return attn_output, attn_weights
 
     def _upcast_and_reordered_attn(
-        self, query, key, value, registered_causal_mask, attention_mask=None, head_mask=None
+            self, query, key, value, registered_causal_mask, attention_mask=None, head_mask=None
     ):
         bsz, num_heads, q_seq_len, dk = query.size()
         _, _, k_seq_len, _ = key.size()
@@ -211,8 +213,8 @@ class QWenAttention(nn.Module):
 
         query_length, key_length = query.size(-2), key.size(-2)
         causal_mask = registered_causal_mask[
-            :, :, key_length - query_length : key_length, :key_length
-        ]
+                      :, :, key_length - query_length: key_length, :key_length
+                      ]
         mask_value = torch.finfo(attn_weights.dtype).min
         mask_value = torch.tensor(mask_value, dtype=attn_weights.dtype).to(
             attn_weights.device
@@ -249,17 +251,17 @@ class QWenAttention(nn.Module):
         return tensor.view(new_shape)
 
     def forward(
-        self,
-        hidden_states: Optional[Tuple[torch.FloatTensor]],
-        rotary_pos_emb: Optional[List[torch.Tensor]] = None,
-        registered_causal_mask: Optional[torch.Tensor] = None,
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
+            self,
+            hidden_states: Optional[Tuple[torch.FloatTensor]],
+            rotary_pos_emb: Optional[List[torch.Tensor]] = None,
+            registered_causal_mask: Optional[torch.Tensor] = None,
+            layer_past: Optional[Tuple[torch.Tensor]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            output_attentions: Optional[bool] = False,
+            use_cache: Optional[bool] = False,
     ):
 
         mixed_x_layer = self.c_attn(hidden_states)
@@ -335,6 +337,7 @@ class QWenMLP(nn.Module):
         output = self.c_proj(intermediate_parallel)
         return output
 
+
 class QWenBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -354,17 +357,17 @@ class QWenBlock(nn.Module):
         self.mlp = QWenMLP(config)
 
     def forward(
-        self,
-        hidden_states: Optional[Tuple[torch.FloatTensor]],
-        rotary_pos_emb: Optional[List[torch.Tensor]] = None,
-        registered_causal_mask: Optional[torch.Tensor] = None,
-        layer_past: Optional[Tuple[torch.Tensor]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = False,
-        output_attentions: Optional[bool] = False,
+            self,
+            hidden_states: Optional[Tuple[torch.FloatTensor]],
+            rotary_pos_emb: Optional[List[torch.Tensor]] = None,
+            registered_causal_mask: Optional[torch.Tensor] = None,
+            layer_past: Optional[Tuple[torch.Tensor]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            use_cache: Optional[bool] = False,
+            output_attentions: Optional[bool] = False,
     ):
         layernorm_output = self.ln_1(hidden_states)
 
@@ -427,8 +430,8 @@ class QWenPreTrainedModel(PreTrainedModel):
                 p.data.normal_(
                     mean=0.0,
                     std=(
-                        self.config.initializer_range
-                        / math.sqrt(2 * self.config.num_hidden_layers)
+                            self.config.initializer_range
+                            / math.sqrt(2 * self.config.num_hidden_layers)
                     ),
                 )
 
@@ -501,6 +504,7 @@ class QWenModel(QWenPreTrainedModel):
         )
 
         self.visual = VisionTransformer(**config.visual)
+        self.json_wte = nn.Embedding(self.vocab_size, self.embed_dim)  # 新增对json format数据的编码器
 
         self.post_init()
 
@@ -509,7 +513,7 @@ class QWenModel(QWenPreTrainedModel):
 
     def set_input_embeddings(self, new_embeddings):
         self.wte = new_embeddings
-    
+
     # Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
         # create causal mask
@@ -534,22 +538,21 @@ class QWenModel(QWenPreTrainedModel):
 
         return combined_attention_mask
 
-
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ):
         if past_key_values is None and torch.any(input_ids == self.config.visual['image_start_id']):
             bos_pos = torch.where(input_ids == self.config.visual['image_start_id'])
@@ -558,14 +561,36 @@ class QWenModel(QWenPreTrainedModel):
             img_pos = torch.stack((bos_pos[0], bos_pos[1], eos_pos[1]), dim=1)
             images = []
             for i, a, b in img_pos:
-                image = input_ids[i][a + 1 : b - 1].tolist()
-                image = image[ : image.index(self.config.visual['image_start_id'] + 2)]
+                image = input_ids[i][a + 1: b - 1].tolist()
+                image = image[: image.index(self.config.visual['image_start_id'] + 2)]
                 images.append(bytes(image).decode('utf-8'))
 
             images = self.visual.encode(images)
             assert images.shape[0] == len(images)
+            fake_images = None
+        elif self.training:
+            fake_images = torch.zeros(1, 3, 224, 224).to(
+                dtype=self.visual.conv1.weight.dtype, device=self.visual.conv1.weight.device)
+            images = self.visual(fake_images)
         else:
+            fake_images = None
             images = None
+
+        # 利用<|extra_0|>和<|extra_1|>定位问卷json data并通过json_wte编码器编码
+        # '<|extra_0|>': 151646, '<|extra_1|>': 151647, '<|endoftext|>': 151643,
+        json_bos_pos = torch.where(input_ids == 151646)
+        json_eos_pos = torch.where(input_ids == 151647)
+        assert (json_bos_pos[0] == json_eos_pos[0]).all()
+        json_pos = torch.stack((json_bos_pos[0], json_bos_pos[1], json_eos_pos[1]), dim=1)
+        json_datas = []
+        max_length = 0
+        for i, a, b in json_pos:
+            if max_length < (b - a - 1): max_length = (b - a - 1).item()
+            json_data = input_ids[i][a + 1: b].tolist()
+            json_datas.append(json_data)
+        json_datas = [i + [151643] * (max_length - len(i)) for i in json_datas]
+        json_datas = torch.LongTensor(json_datas).to(self.json_wte.weight.device)
+        json_datas = self.json_wte(json_datas)
 
         output_attentions = (
             output_attentions
@@ -637,9 +662,9 @@ class QWenModel(QWenPreTrainedModel):
             # past key values[0][0] shape: bs * seq_len * head_num * dim
             kv_seq_len += past_key_values[0][0].shape[1]
         if (
-            self.use_dynamic_ntk
-            and kv_seq_len == hidden_states.size()[1]
-            and not self.training
+                self.use_dynamic_ntk
+                and kv_seq_len == hidden_states.size()[1]
+                and not self.training
         ):
             context_value = math.log(kv_seq_len / self.seq_length, 2) + 1
             ntk_alpha = 2 ** math.ceil(context_value) - 1
@@ -651,10 +676,16 @@ class QWenModel(QWenPreTrainedModel):
         for idx in range(len(rotary_pos_emb)):
             rotary_pos_emb[idx] = rotary_pos_emb[idx].to(hidden_states.device)
 
-        hidden_states = self.drop(hidden_states)
-        if images is not None:
+        hidden_states = self.drop(hidden_states).clone()
+        if fake_images is not None:
+            hidden_states = hidden_states + images.mean() * 0
+        elif images is not None:
             for idx, (i, a, b) in enumerate(img_pos):
-                hidden_states[i][a + 1 : b] = images[idx]
+                hidden_states[i][a + 1: b] = images[idx]  # 只赋值中间256个，img字符依然保留
+
+        for idx, (i, a, b) in enumerate(json_pos):
+            hidden_states[i][a + 1: b] = json_datas[idx][:b - a - 1]  # 只赋值中间227个，特殊字符依然保留
+
         output_shape = input_shape + (hidden_states.size(-1),)
 
         if self.gradient_checkpointing and self.training:
@@ -732,6 +763,28 @@ class QWenModel(QWenPreTrainedModel):
         )
 
 
+class FocalLoss(nn.Module):
+    '''
+    Multi-class Focal Loss
+    '''
+
+    def __init__(self, gamma=2, weight=None):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.weight = weight
+
+    def forward(self, input, target):
+        """
+        input: [B, C], float32
+        target: [B, ], int64
+        """
+        logpt = F.log_softmax(input, dim=1)
+        pt = torch.exp(logpt)
+        logpt = (1 - pt) ** self.gamma * logpt
+        loss = F.nll_loss(logpt, target, self.weight)
+        return loss
+
+
 class QWenLMHeadModel(QWenPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"h\.\d+\.attn\.rotary_emb\.inv_freq"]
     _keys_to_ignore_on_load_unexpected = [r"h\.\d+\.attn\.masked_bias"]
@@ -739,7 +792,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         assert (
-            config.bf16 + config.fp16 + config.fp32 <= 1
+                config.bf16 + config.fp16 + config.fp32 <= 1
         ), "Only one of \"bf16\", \"fp16\", \"fp32\" can be true"
 
         autoset_precision = config.bf16 + config.fp16 + config.fp32 == 0
@@ -761,14 +814,18 @@ class QWenLMHeadModel(QWenPreTrainedModel):
                 config.fp32 = True
 
         if config.bf16 and SUPPORT_CUDA and not SUPPORT_BF16:
-            logger.warn("Your device does NOT seem to support bf16, you can switch to fp16 or fp32 by by passing fp16/fp32=True in \"AutoModelForCausalLM.from_pretrained\".")
+            logger.warn(
+                "Your device does NOT seem to support bf16, you can switch to fp16 or fp32 by by passing fp16/fp32=True in \"AutoModelForCausalLM.from_pretrained\".")
         if config.fp16 and SUPPORT_CUDA and not SUPPORT_FP16:
-            logger.warn("Your device does NOT support faster inference with fp16, please switch to fp32 which is likely to be faster")
+            logger.warn(
+                "Your device does NOT support faster inference with fp16, please switch to fp32 which is likely to be faster")
         if config.fp32:
             if SUPPORT_BF16:
-                logger.warn("Your device support faster inference by passing bf16=True in \"AutoModelForCausalLM.from_pretrained\".")
+                logger.warn(
+                    "Your device support faster inference by passing bf16=True in \"AutoModelForCausalLM.from_pretrained\".")
             elif SUPPORT_FP16:
-                logger.warn("Your device support faster inference by passing fp16=True in \"AutoModelForCausalLM.from_pretrained\".")
+                logger.warn(
+                    "Your device support faster inference by passing fp16=True in \"AutoModelForCausalLM.from_pretrained\".")
 
         self.transformer = QWenModel(config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
@@ -788,7 +845,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         self.lm_head = new_embeddings
 
     def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs
+            self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs
     ):
         token_type_ids = kwargs.get("token_type_ids", None)
         if past_key_values:
@@ -824,21 +881,21 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         return model_inputs
 
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
         return_dict = (
@@ -869,7 +926,8 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             labels = labels.to(lm_logits.device)
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            loss_fct = CrossEntropyLoss()
+            # loss_fct = CrossEntropyLoss()
+            loss_fct = FocalLoss(gamma=2)
             loss = loss_fct(
                 shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
             )
@@ -888,7 +946,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
 
     @staticmethod
     def _reorder_cache(
-        past_key_values: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor
+            past_key_values: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor
     ) -> Tuple[Tuple[torch.Tensor]]:
 
         return tuple(
@@ -900,16 +958,16 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         )
 
     def chat(
-        self,
-        tokenizer: PreTrainedTokenizer,
-        query: str,
-        history: Optional[HistoryType],
-        system: str = "You are a helpful assistant.",
-        append_history: bool = True,
-        stream: Optional[bool] = _SENTINEL,
-        stop_words_ids: Optional[List[List[int]]] = None,
-        generation_config: Optional[GenerationConfig] = None,
-        **kwargs,
+            self,
+            tokenizer: PreTrainedTokenizer,
+            query: str,
+            history: Optional[HistoryType],
+            system: str = "You are a helpful assistant.",
+            append_history: bool = True,
+            stream: Optional[bool] = _SENTINEL,
+            stop_words_ids: Optional[List[List[int]]] = None,
+            generation_config: Optional[GenerationConfig] = None,
+            **kwargs,
     ) -> Tuple[str, HistoryType]:
         generation_config = generation_config if generation_config is not None else self.generation_config
 
@@ -937,12 +995,12 @@ class QWenLMHeadModel(QWenPreTrainedModel):
         ))
         input_ids = torch.tensor([context_tokens]).to(self.device)
         outputs = self.generate(
-                    input_ids,
-                    stop_words_ids=stop_words_ids,
-                    return_dict_in_generate=False,
-                    generation_config=generation_config,
-                    **kwargs,
-                )
+            input_ids,
+            stop_words_ids=stop_words_ids,
+            return_dict_in_generate=False,
+            generation_config=generation_config,
+            **kwargs,
+        )
 
         response = decode_tokens(
             outputs[0],
@@ -1018,23 +1076,23 @@ class QWenLMHeadModel(QWenPreTrainedModel):
                     seed=-1,
                     **kwargs):
                 outputs.append(token.item())
-                yield tokenizer.decode(outputs, skip_special_tokens=True, errors='ignore')
+                yield tokenizer.decode(outputs, skip_special_tokens=True, errors='ignore', keep_image_special=True)
 
         return stream_generator()
 
     def generate(
-        self,
-        inputs: Optional[torch.Tensor] = None,
-        generation_config: Optional[GenerationConfig] = None,
-        logits_processor: Optional[LogitsProcessorList] = None,
-        stopping_criteria: Optional[StoppingCriteriaList] = None,
-        prefix_allowed_tokens_fn: Optional[
-            Callable[[int, torch.Tensor], List[int]]
-        ] = None,
-        synced_gpus: Optional[bool] = None,
-        assistant_model: Optional["PreTrainedModel"] = None,
-        streamer: Optional["BaseStreamer"] = None,
-        **kwargs,
+            self,
+            inputs: Optional[torch.Tensor] = None,
+            generation_config: Optional[GenerationConfig] = None,
+            logits_processor: Optional[LogitsProcessorList] = None,
+            stopping_criteria: Optional[StoppingCriteriaList] = None,
+            prefix_allowed_tokens_fn: Optional[
+                Callable[[int, torch.Tensor], List[int]]
+            ] = None,
+            synced_gpus: Optional[bool] = None,
+            assistant_model: Optional["PreTrainedModel"] = None,
+            streamer: Optional["BaseStreamer"] = None,
+            **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         generation_config = generation_config if generation_config is not None else self.generation_config
 
@@ -1086,17 +1144,17 @@ class RotaryEmbedding(torch.nn.Module):
         if seqlen > self._seq_len_cached or ntk_alpha != self._ntk_alpha_cached:
             base = self.base * ntk_alpha ** (self.dim / (self.dim - 2))
             self.inv_freq = 1.0 / (
-                base
-                ** (
-                    torch.arange(0, self.dim, 2, device=self.inv_freq.device).float()
-                    / self.dim
-                )
+                    base
+                    ** (
+                            torch.arange(0, self.dim, 2, device=self.inv_freq.device).float()
+                            / self.dim
+                    )
             )
             self._seq_len_cached = max(2 * seqlen, 16)
             self._ntk_alpha_cached = ntk_alpha
             seq = torch.arange(self._seq_len_cached, device=self.inv_freq.device)
             freqs = torch.outer(seq.type_as(self.inv_freq), self.inv_freq)
-            
+
             emb = torch.cat((freqs, freqs), dim=-1)
             from einops import rearrange
 
@@ -1108,7 +1166,7 @@ class RotaryEmbedding(torch.nn.Module):
     def forward(self, max_seq_len, offset=0, ntk_alpha=1.0):
         self.update_rotary_pos_emb_cache(max_seq_len, offset, ntk_alpha)
         cos, sin = self._rotary_pos_emb_cache
-        return [cos[:, offset : offset + max_seq_len], sin[:, offset : offset + max_seq_len]]
+        return [cos[:, offset: offset + max_seq_len], sin[:, offset: offset + max_seq_len]]
 
 
 def _rotate_half(x):

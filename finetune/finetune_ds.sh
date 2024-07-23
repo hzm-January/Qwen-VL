@@ -14,11 +14,11 @@ MASTER_PORT=9911 # 6001->9911
 #MODEL="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat" #"Qwen/Qwen-VL-Chat"/"Qwen/Qwen-VL" # Set the path if you do not want to load from huggingface directly
 # ATTENTION: specify the path to your training data, which should be a json file consisting of a list of conversations.
 # See the section for finetuning in README for more information.
-#DATA="/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/align/align_finetune_dataset.json" # alignment dataset
+#DATA="/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/align/align_finetune_dataset.json" # alignment dataset
 #OUTPUT_DIR="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/align/$(date '+%Y%m%d-%H%M%S')" # alignment model output path
 
 MODEL="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/align/20240721-211309"
-DATA="/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/diagnose/diagnose_finetune_dataset.json" # diagnose dataset
+DATA="/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/diagnose_finetune_dataset.json" # diagnose dataset
 OUTPUT_DIR="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/diagnose/$(date '+%Y%m%d-%H%M%S')" # diagnose model output path
 
 #TODO: 为什么指定GPU多卡训练，这两个参数传入无法正常运行该sh文件？-- 待排查原因
@@ -32,6 +32,7 @@ DISTRIBUTED_ARGS="
 # TODO: modify settings
 # model_max_length 2048->4096
 # report_to "none" -> tensorboard
+# num_train_epochs 5->2
 run_sh="/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/torchrun  $DISTRIBUTED_ARGS /data1/llm/houzm/99-code/01-Qwen-VL/finetune.py \
     --model_name_or_path $MODEL \
     --data_path $DATA \

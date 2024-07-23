@@ -9,17 +9,21 @@ file_name:
   word_data_json: 'patient_infos_word_{}.json'
   align_finetune_dataset_json: 'align_finetune_dataset.json'
   diagnose_finetune_dataset_json: 'diagnose_finetune_dataset.json'
+  diagnose_test_dataset_json: 'diagnose_test_dataset.json'
+  diagnose_test_label_json: 'diagnose_test_label.json'
 file_path:
-  load: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
-  save_org: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/org_data/'
-  save_word: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_sources/word_data/'
-  save_align_finetune_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/align/'
-  save_diagnose_finetune_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai-doctor/data/data_finetune/diagnose/'
+  load: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_sources/org_data/'
+  save_org: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_sources/org_data/'
+  save_word: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_sources/word_data/'
+  save_align_finetune_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/align/'
+  save_diagnose_finetune_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/'
+  save_diagnose_test_dataset: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/'
+  save_diagnose_test_label: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/'
 prompt:
   finetune_align_prefix: '假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：'
   finetune_align_suffix: "Let's think step by step."
   finetune_diagnose_prefix: '假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：'
-  finetune_diagnose_require: "请根据检测结果与病史情况，判断患者是否患有圆锥角膜病。"
+  finetune_diagnose_require: "请根据检测结果与病史情况，诊断是否患有圆锥角膜病。"
   diagnose_in_context_learning: "已知诊断是否患有圆锥角膜病有以下检测指标和理论依据：
           1. 患者揉眼睛的频率、持续时间、力度、偏好及部位的情况。理论依据：频繁和用力揉眼睛被认为是圆锥角膜的危险因素之一，因为机械性的揉眼动作可以对角膜施加压力，导致其变形和变薄。
           2. 患者有没有圆锥角膜家族患病史。理论依据：圆锥角膜病具有一定的遗传倾向，家族患病史会增加患病风险。
@@ -29,7 +33,8 @@ prompt:
           6. 患者是否吸烟、是否饮酒、是否有怀孕史。理论依据：吸烟和饮酒以及怀孕可能影响角膜健康，虽然与圆锥角膜的直接关联较少，但可能是一个辅助风险因素。
           7. 患者是否用过外源性性激素药物。理论依据：如果没有用过外源性性激素药物，排除了激素药物对角膜健康的影响。
           8. 患者睡姿。理论依据：有些睡姿可能导致眼睛受到挤压，影响角膜健康。"
-  diagnose_prompt: "Let's think step by step."
+  diagnose_prompt_ltsbs: "Let's think step by step."
+  diagnose_prompt_tools: "请先上网搜索相关资料，再做诊断。"
 
 
 

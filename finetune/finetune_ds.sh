@@ -1,23 +1,24 @@
 #!/bin/bash
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4
+export CUDA_VISIBLE_DEVICES=0,2,3,4
 
 DIR=`pwd`
 
-GPUS_PER_NODE=5
-NNODES=5
+GPUS_PER_NODE=4
+NNODES=1
 NODE_RANK=0
 MASTER_ADDR=localhost
 MASTER_PORT=9911 # 6001->9911
 
 #TODO: 1 set your model path, dataset path and output path
-#MODEL="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat" #"Qwen/Qwen-VL-Chat"/"Qwen/Qwen-VL" # Set the path if you do not want to load from huggingface directly
+MODEL="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat" #"Qwen/Qwen-VL-Chat"/"Qwen/Qwen-VL" # Set the path if you do not want to load from huggingface directly
 # ATTENTION: specify the path to your training data, which should be a json file consisting of a list of conversations.
 # See the section for finetuning in README for more information.
 #DATA="/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/align/align_finetune_dataset.json" # alignment dataset
 #OUTPUT_DIR="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/align/$(date '+%Y%m%d-%H%M%S')" # alignment model output path
 
-MODEL="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/align/20240721-211309"
+#
+#MODEL="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/align/20240721-211309"
 DATA="/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/diagnose_finetune_dataset.json" # diagnose dataset
 OUTPUT_DIR="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/diagnose/$(date '+%Y%m%d-%H%M%S')" # diagnose model output path
 
@@ -26,23 +27,31 @@ OUTPUT_DIR="/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen
 #    --node_rank $NODE_RANK \
 DISTRIBUTED_ARGS="
     --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
     --master_addr $MASTER_ADDR \
     --master_port $MASTER_PORT
 "
 # TODO: modify settings
 # model_max_length 2048->4096
 # report_to "none" -> tensorboard
+
+# TODO: fine tuning the following parameters
 # num_train_epochs 5->2
+# per_device_train_batch_size 1
+# per_device_eval_batch_size 1
+# gradient_accumulation_steps 16->1
+# learning_rate 1e-6->1e-5
+
 run_sh="/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/torchrun  $DISTRIBUTED_ARGS /data1/llm/houzm/99-code/01-Qwen-VL/finetune.py \
     --model_name_or_path $MODEL \
     --data_path $DATA \
     --bf16 True \
     --fix_vit True \
     --output_dir $OUTPUT_DIR \
-    --num_train_epochs 5 \
-    --per_device_train_batch_size 1 \
+    --num_train_epochs 2 \
+    --per_device_train_batch_size 1\
     --per_device_eval_batch_size 1 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 1000 \
@@ -54,10 +63,11 @@ run_sh="/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/torchrun  $DISTRIBUTED_ARGS /d
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
     --report_to tensorboard \
-    --model_max_length 2048 \
+    --model_max_length 4096 \
     --gradient_checkpointing True \
     --lazy_preprocess True \
-    --deepspeed /data1/llm/houzm/99-code/01-Qwen-VL/finetune/ds_config_zero3.json"
+    --deepspeed /data1/llm/houzm/99-code/01-Qwen-VL/finetune/ds_config_zero3.json\
+    "
 
 mkdir -p $OUTPUT_DIR
 #cp -r /data1/llm/houzm/99-code/01-Qwen-VL/finetune.py $OUTPUT_DIR

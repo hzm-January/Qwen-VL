@@ -8,9 +8,6 @@ import math
 from typing import TYPE_CHECKING, Optional, Tuple, Union, Callable, List, Any, Generator
 
 import torch
-import torch.nn as nn
-import numpy as np
-
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.cuda.amp import autocast
@@ -48,6 +45,15 @@ from .qwen_generation_utils import (
     StopWordsLogitsProcessor,
 )
 from .visual import VisionTransformer
+
+# Custom
+from util.util import ExtUtil
+
+CONFIG_EXT = ExtUtil.load_yaml_conf()
+SPECIAL_TOKENS = ExtUtil.load_json_conf(CONFIG_EXT['path']['special_tokens'])
+EXT_0_ID = SPECIAL_TOKENS['<|extra_0|>']
+EXT_1_ID = SPECIAL_TOKENS['<|extra_1|>']
+EXT_END_ID = SPECIAL_TOKENS['<|endoftext|>']
 
 logger = logging.get_logger(__name__)
 
@@ -504,9 +510,11 @@ class QWenModel(QWenPreTrainedModel):
         )
 
         self.visual = VisionTransformer(**config.visual)
-        self.json_wte = nn.Embedding(self.vocab_size, self.embed_dim)  # 新增对json format数据的编码器
 
         self.post_init()
+
+        # TODO: add json embedding encoder
+        self.json_wte = nn.Embedding(self.vocab_size, self.embed_dim)
 
     def get_input_embeddings(self):
         return self.wte
@@ -567,30 +575,24 @@ class QWenModel(QWenPreTrainedModel):
 
             images = self.visual.encode(images)
             assert images.shape[0] == len(images)
-            fake_images = None
-        elif self.training:
-            fake_images = torch.zeros(1, 3, 224, 224).to(
-                dtype=self.visual.conv1.weight.dtype, device=self.visual.conv1.weight.device)
-            images = self.visual(fake_images)
         else:
-            fake_images = None
             images = None
 
-        # 利用<|extra_0|>和<|extra_1|>定位问卷json data并通过json_wte编码器编码
+        # 利用<|extra_0|>和<|extra_1|>定位问卷json data并通过json_w2e编码器编码
         # '<|extra_0|>': 151646, '<|extra_1|>': 151647, '<|endoftext|>': 151643,
-        json_bos_pos = torch.where(input_ids == 151646)
-        json_eos_pos = torch.where(input_ids == 151647)
+        json_bos_pos = torch.where(input_ids == EXT_0_ID)
+        json_eos_pos = torch.where(input_ids == EXT_1_ID)
         assert (json_bos_pos[0] == json_eos_pos[0]).all()
         json_pos = torch.stack((json_bos_pos[0], json_bos_pos[1], json_eos_pos[1]), dim=1)
-        json_datas = []
-        max_length = 0
-        for i, a, b in json_pos:
+        jsons = []
+        max_length = 0  # max length for alignment
+        for i, a, b in json_pos:  # get json data from each query
             if max_length < (b - a - 1): max_length = (b - a - 1).item()
             json_data = input_ids[i][a + 1: b].tolist()
-            json_datas.append(json_data)
-        json_datas = [i + [151643] * (max_length - len(i)) for i in json_datas]
-        json_datas = torch.LongTensor(json_datas).to(self.json_wte.weight.device)
-        json_datas = self.json_wte(json_datas)
+            jsons.append(json_data)
+        jsons = [i + [EXT_END_ID] * (max_length - len(i)) for i in jsons]  # align
+        jsons = torch.LongTensor(jsons).to(self.json_wte.weight.device)
+        jsons = self.json_wte(jsons)  # embedding
 
         output_attentions = (
             output_attentions
@@ -676,15 +678,15 @@ class QWenModel(QWenPreTrainedModel):
         for idx in range(len(rotary_pos_emb)):
             rotary_pos_emb[idx] = rotary_pos_emb[idx].to(hidden_states.device)
 
-        hidden_states = self.drop(hidden_states).clone()
-        if fake_images is not None:
-            hidden_states = hidden_states + images.mean() * 0
-        elif images is not None:
+        hidden_states = self.drop(hidden_states)
+        if images is not None:
             for idx, (i, a, b) in enumerate(img_pos):
-                hidden_states[i][a + 1: b] = images[idx]  # 只赋值中间256个，img字符依然保留
+                hidden_states[i][a + 1: b] = images[idx]
 
-        for idx, (i, a, b) in enumerate(json_pos):
-            hidden_states[i][a + 1: b] = json_datas[idx][:b - a - 1]  # 只赋值中间227个，特殊字符依然保留
+        # TODO: custom
+        if jsons is not None:
+            for idx, (i, a, b) in enumerate(json_pos):
+                hidden_states[i][a + 1: b] = jsons[idx][:b - a - 1] # TODO: 待确认：这里是否要将后面的填充字符去掉
 
         output_shape = input_shape + (hidden_states.size(-1),)
 
@@ -761,28 +763,6 @@ class QWenModel(QWenPreTrainedModel):
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
         )
-
-
-class FocalLoss(nn.Module):
-    '''
-    Multi-class Focal Loss
-    '''
-
-    def __init__(self, gamma=2, weight=None):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
-        self.weight = weight
-
-    def forward(self, input, target):
-        """
-        input: [B, C], float32
-        target: [B, ], int64
-        """
-        logpt = F.log_softmax(input, dim=1)
-        pt = torch.exp(logpt)
-        logpt = (1 - pt) ** self.gamma * logpt
-        loss = F.nll_loss(logpt, target, self.weight)
-        return loss
 
 
 class QWenLMHeadModel(QWenPreTrainedModel):
@@ -926,8 +906,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
             labels = labels.to(lm_logits.device)
             shift_logits = lm_logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            # loss_fct = CrossEntropyLoss()
-            loss_fct = FocalLoss(gamma=2)
+            loss_fct = CrossEntropyLoss()
             loss = loss_fct(
                 shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
             )
@@ -1076,7 +1055,7 @@ class QWenLMHeadModel(QWenPreTrainedModel):
                     seed=-1,
                     **kwargs):
                 outputs.append(token.item())
-                yield tokenizer.decode(outputs, skip_special_tokens=True, errors='ignore', keep_image_special=True)
+                yield tokenizer.decode(outputs, skip_special_tokens=True, errors='ignore')
 
         return stream_generator()
 

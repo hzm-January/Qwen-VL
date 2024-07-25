@@ -1,0 +1,3 @@
+path:
+
+  special_tokens: '/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/qwen_ext/config/qwen_special_tokens.json'

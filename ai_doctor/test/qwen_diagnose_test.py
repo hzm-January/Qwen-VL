@@ -50,6 +50,7 @@ for i in range(patient_cnt):
     # print(new_query)
     print("id:", i, "predict: ", response, "label: ", ass_value)
 
+
 # 图中是一名年轻女子在沙滩上和她的狗玩耍，狗的品种是拉布拉多。她们坐在沙滩上，狗的前腿抬起来，与人互动。
 
 # # 第二轮对话

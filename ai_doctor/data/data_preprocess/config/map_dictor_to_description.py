@@ -9,7 +9,7 @@ FLAG_ABNORM = "异常"
 
 D_Mapping = {
     "DangerousFactor_Mapping": {
-        "type": TYPE_INFO,
+        "type": TYPE_INFO,  # TYPE_INFO,
         "rule": {
             "性别": {1: "性别男", 2: "性别女"},
             "睡觉时是否打鼾或患有睡眠呼吸暂停综合征？": {1: "睡觉时打鼾或患有睡眠呼吸暂停综合症", 2: "睡觉时不打鼾且没有睡眠呼吸暂停综合症"},

@@ -4,10 +4,6 @@ from modelscope import (
     snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 )
 from pathlib import Path
-import logging
-
-logging.basicConfig(format="[%(asctime)s]: %(message)s", datefmt="%Y-%M-%d %H:%M:%S", level=logging.INFO)
-logger = logging.getLogger('-')
 
 
 def main(args):
@@ -52,7 +48,7 @@ def main(args):
         label_info = json.load(file)
 
     patient_cnt = len(label_info)
-    logger.info("---- data count ----: %d", patient_cnt)
+    print("---- data count ----: ", patient_cnt)
 
     correct = 0
     TP = 0
@@ -75,8 +71,8 @@ def main(args):
         label = label_info[i]
         label = 1 if label else 0
 
-        predict = 1 if response == "Yes" else 0
-        logger.info("id: %d, predict: %d, label: %d", i, predict, label)
+        predict = 1 if response == F_T else 0
+        print("id:", i, "predict: ", predict, "label: ", label)
 
         predicts.append(predict)
 
@@ -91,7 +87,7 @@ def main(args):
         elif label == F_T and predict == F_F:
             FN += 1
         else:
-            logger.info('Prediction is not Yes and not No either, It is %d, GT is %d', predict, label)
+            print('Prediction is not Yes and not No either, It is ', predict, ', GT is ', label)
 
     path = Path(diagnose_test_dataset_dir)
     if not path.exists():
@@ -106,11 +102,11 @@ def main(args):
     # f1_ = 2*precision*recall/(precision+recall)
 
     f1 = 2 * TP / (2 * TP + FP + FN)
-    logger.info('TP: %d, FP: %d, TN: %d, FN: %d', TP, FP, TN, FN)
-    logger.info('准确率：%f %f', correct / patient_cnt, (TP + TN) / (TP + FP + TN + FN))
-    logger.info('灵敏度：%f', sensitivity)
-    logger.info('特异度：%f', specificity)
-    logger.info('F1-Score：%f', f1)
+
+    print('准确率：', correct / patient_cnt, (TP + TN) / (TP + FP + TN + FN))
+    print('灵敏度：', sensitivity)
+    print('特异度：', specificity)
+    print('F1-Score：', f1)
 
 
 if __name__ == '__main__':

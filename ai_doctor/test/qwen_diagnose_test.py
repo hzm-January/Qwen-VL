@@ -1,64 +1,118 @@
 import torch, os, json
+import argparse
 from modelscope import (
     snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 )
+from pathlib import Path
+import logging
 
-model_dir = '/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/diagnose/20240722-202958/'
-
-tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-if not hasattr(tokenizer, 'model_dir'):
-    tokenizer.model_dir = model_dir
-# 打开bf16精度，A100、H100、RTX3060、RTX3070等显卡建议启用以节省显存
-model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="cuda:0", trust_remote_code=True, bf16=True).eval()
-# 打开fp16精度，V100、P100、T4等显卡建议启用以节省显存
-# model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True, fp16=True).eval()
-# 使用CPU进行推理，需要约32GB内存
-# model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="cpu", trust_remote_code=True).eval()
-# 默认gpu进行推理，需要约24GB显存
-# model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
-
-# 指定生成超参数（transformers 4.32.0及以上无需执行此操作）
-# model.generation_config = GenerationConfig.from_pretrained(model_dir, trust_remote_code=True)
-
-# 第一轮对话
-# Either a local path or an url between <img></img> tags.
-# image_path = 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg'
-# query = (
-#     "假设你是一个眼科专家，已知当前患者的检查结果与病史情况为：\n{"
-#     "'性别': '男', '年龄': '61', '眼别': '左眼', '眼表疾病指数量表': '43.18', '角膜荧光染色评分': '0', '泪膜破裂时间': '3', '泪河高度': '0.2', "
-#     "'泪液分泌实验': '6', '您是否发生过皮肤排异': '是', '您是否发生过口腔排异': '是', '您是否发生过肠道排异': '否', '您是否发生过肺排异': '否', "
-#     "'您是否发生过肝排异': '否', '哭时，是否有眼泪': '是', '哭时有眼泪-流泪时感觉': '1', '哭时无眼泪-无泪时感觉': '1', '使用电子产品类型': '手机', "
-#     "'每天平均电子产品使用时间': ''}\n")
-# diagnose_test_dataset, label_info = [], []
-with open('/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/diagnose_test_dataset.json',
-          'r') as file:
-    diagnose_test_dataset = json.load(file)
-with open('/data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/diagnose_test_label.json',
-          'r') as file:
-    label_info = json.load(file)
-patient_cnt = len(label_info)
-print(patient_cnt)
-for i in range(patient_cnt):
-    # print(diagnose_test_dataset[i])
-    response, history = model.chat(tokenizer,
-                                   query=diagnose_test_dataset[i] + "请根据检测结果与病史情况，诊断是否患有圆锥角膜病。",
-                                   history=None)
-    # print(response)
-    # new_query = diagnose_test_dataset[i]+"请根据检测结果诊断该人员是否患有圆锥角膜病。"
-    # response, history = model.chat(tokenizer, query=new_query, history=history)
-    ass_value = "诊断结果为：圆锥角膜病。" if label_info[i] else "诊断结果为：角膜正常。"
-    # print(new_query)
-    print("id:", i, "predict: ", response, "label: ", ass_value)
+logging.basicConfig(format="[%(asctime)s]: %(message)s", datefmt="%Y-%M-%d %H:%M:%S", level=logging.INFO)
+logger = logging.getLogger('-')
 
 
-# 图中是一名年轻女子在沙滩上和她的狗玩耍，狗的品种是拉布拉多。她们坐在沙滩上，狗的前腿抬起来，与人互动。
+def main(args):
+    # dir_id = '20240725-104805'
+    dir_id = args.dir_id
 
-# # 第二轮对话
-# response, history = model.chat(tokenizer, '输出击掌的检测框', history=history)
-# print(response)
-# # <ref>"击掌"</ref><box>(211,412),(577,891)</box>
-# image = tokenizer.draw_bbox_on_latest_picture(response, history)
-# if image:
-#     image.save('output_chat.jpg')
-# else:
-#     print("no box")
+    model_dir = '/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/diagnose/' + dir_id
+    diagnose_test_dataset_json = model_dir + '/train_test_dataset/diagnose_test_dataset.json'
+    diagnose_test_label_json = model_dir + '/train_test_dataset/diagnose_test_label.json'
+
+    diagnose_test_dataset_dir = model_dir + '/predict_result/'
+    diagnose_predict_result_json = diagnose_test_dataset_dir + 'diagnose_predict_result.json'
+
+    F_T = 1  # positive flag
+    F_F = 0  #
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_dir,  # path to the output directory
+        device_map="cuda:0",
+        trust_remote_code=True,
+        bf16=True
+    ).eval()
+    # merged_model = model.merge_and_unload()
+    # max_shard_size and safe serialization are not necessary.
+    # They respectively work for sharding checkpoint and save the model to safetensors
+
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+    if not hasattr(tokenizer, 'model_dir'):
+        tokenizer.model_dir = model_dir
+    logger.info(f'test dataset: {diagnose_test_dataset_json}')
+    logger.info(f'test label  : {diagnose_test_label_json}')
+    with open(diagnose_test_dataset_json, 'r') as file:
+        diagnose_test_dataset = json.load(file)
+    with open(diagnose_test_label_json, 'r') as file:
+        label_info = json.load(file)
+
+    patient_cnt = len(label_info)
+    logger.info("---- data count ----: %d", patient_cnt)
+
+    correct = 0
+    TP = 0
+    FP = 0
+    TN = 0
+    FN = 0
+
+    predicts = []
+    for i in range(patient_cnt):
+        # print(diagnose_test_dataset[i])
+        response, history = model.chat(tokenizer,
+                                       query=diagnose_test_dataset[i],
+                                       history=None)
+        # print(response)
+        # new_query = diagnose_test_dataset[i]+"请根据检测结果诊断该人员是否患有圆锥角膜病。"
+        # response, history = model.chat(tokenizer, query=new_query, history=history)
+        # label = F_T if label_info[i] else F_F
+        # print(new_query)
+
+        label = label_info[i]
+        label = 1 if label else 0
+
+        predict = 1 if response == "Yes" else 0
+        logger.info("id: %d, predict: %d, label: %d", i, predict, label)
+
+        predicts.append(predict)
+
+        if label == predict: correct += 1
+
+        if label == F_T and predict == F_T:
+            TP += 1
+        elif label == F_F and predict == F_T:
+            FP += 1
+        elif label == F_F and predict == F_F:
+            TN += 1
+        elif label == F_T and predict == F_F:
+            FN += 1
+        else:
+            logger.info('Prediction is not Yes and not No either, It is %d, GT is %d', predict, label)
+
+    path = Path(diagnose_test_dataset_dir)
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+    with open(diagnose_predict_result_json, 'w') as f:
+        json.dump(predicts, f, ensure_ascii=False)
+
+    sensitivity = TP / (TP + FN)
+    specificity = TN / (TN + FP)
+    # precision = TP/(TP+FP)
+    # recall = TP/(TP+FN)
+    # f1_ = 2*precision*recall/(precision+recall)
+
+    f1 = 2 * TP / (2 * TP + FP + FN)
+    logger.info('TP: %d, FP: %d, TN: %d, FN: %d', TP, FP, TN, FN)
+    logger.info('准确率：%f %f', correct / patient_cnt, (TP + TN) / (TP + FP + TN + FN))
+    logger.info('灵敏度：%f', sensitivity)
+    logger.info('特异度：%f', specificity)
+    logger.info('F1-Score：%f', f1)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Test  checkpoint.")
+
+    parser.add_argument(
+        "-o", "--dir-id", type=str, default="20240726-094241"
+    )
+
+    args = parser.parse_args()
+
+    main(args)

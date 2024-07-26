@@ -1,5 +1,6 @@
 import json, yaml, os, glob, uuid
 import pandas as pd
+import numpy as np
 from config.map_dictor_to_word import W_Mapping, TYPE_INFO, TYPE_INDC
 from config.map_dictor_to_description import D_Mapping
 
@@ -21,10 +22,9 @@ save_diagnose_test_dataset_path = file_pathes['save_diagnose_test_dataset']
 save_diagnose_test_label_path = file_pathes['save_diagnose_test_label']
 fine_tune_diagnose_conf = s1_conf['fine_tune']['diagnose']
 
-
 prompt_conf = s1_conf['prompt'][LANGUAGE]
 
-T_I = 1  # table id
+table_ids = s1_conf['table_ids']  # table ids
 
 
 def trans_org_xlsx_to_json():
@@ -74,12 +74,13 @@ def replace_indicator_to_word():
         sh_df_data.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in
                               sh_df_data.columns]
 
-        rows_data = sh_df_data.apply(lambda row: ','.join(f"{col_name} is {row[col_name]}" for col_name in sh_df_data.columns), axis=1)
+        rows_data = sh_df_data.apply(
+            lambda row: ','.join(f"{col_name} is {row[col_name]}" for col_name in sh_df_data.columns), axis=1)
         rows_str = rows_data.values.tolist()
 
-    #     # # save to file
-    #     # sh_df.to_json((save_word_json_path + file_names['word_data_json']).format(sh_name.replace('.', '_')),
-    #     #               orient='records', force_ascii=False)
+        #     # # save to file
+        #     # sh_df.to_json((save_word_json_path + file_names['word_data_json']).format(sh_name.replace('.', '_')),
+        #     #               orient='records', force_ascii=False)
         patients_info.append(rows_str)
         labels_info.append(sh_df_label.values.tolist())
     return patients_info, labels_info
@@ -156,27 +157,37 @@ def create_finetune_dataset_align():
     return dataset
 
 
+def generate_patients_word_infos(patients_word_infos, labels_infos):
+    # for tid in table_ids:
+    pswis, lbis = np.array(patients_word_infos).T.tolist(), np.array(
+        labels_infos).T.tolist()  # [[p_1_abc],[p_2_def],[p_3_ghi]]->[[p_1_adg],[]]
+    patients_word_infos = [','.join(p_infos[i] for i in table_ids) for p_infos in pswis]
+    label_infos = [1 if sum(labels[i] for i in table_ids) else 0 for labels in lbis]
+    return patients_word_infos, label_infos
+
+
 def create_train_test_dataset_diagnose():
     patients_word_infos, labels_infos = replace_indicator_to_word()
-    patient_cnt = min([len(p) for p in patients_word_infos])
+    patients_word_infos, labels_infos = generate_patients_word_infos(patients_word_infos, labels_infos)
+    patient_cnt = len(labels_infos)
     train_dataset, test_dataset = [], []
-    ratio = patient_cnt * fine_tune_diagnose_conf['train_data_ratio']
-    for i in range(int(ratio)):
+    ratio = int(patient_cnt * fine_tune_diagnose_conf['train_data_ratio'])
+    for i in range(ratio):
         user_value = (prompt_conf['finetune_diagnose_prefix']
-                      + str(patients_word_infos[T_I][i])
+                      + patients_word_infos[i]
                       + "。"
                       + prompt_conf['finetune_diagnose_require'])
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
-        ass_value = "Yes" if labels_infos[T_I][i] else "No"
+        ass_value = "Yes" if labels_infos[i] else "No"
         patient_description = {'id': str(uuid.uuid4()),
                                'conversations': [{'from': 'user', 'value': user_value},
                                                  {'from': 'assistant', 'value': ass_value}],
                                'type': 'stage3'}
 
         train_dataset.append(patient_description)
-    for i in range(int(ratio), patient_cnt):
+    for i in range(ratio, patient_cnt):
         patient_description = (prompt_conf['finetune_diagnose_prefix']
-                               + str(patients_word_infos[T_I][i])
+                               + str(patients_word_infos[i])
                                + "。"
                                + prompt_conf['finetune_diagnose_require']
                                # + prompt_conf['diagnose_in_context_learning']
@@ -184,7 +195,7 @@ def create_train_test_dataset_diagnose():
                                # + prompt_conf['diagnose_prompt_tools']
                                )
         test_dataset.append(patient_description)
-    return train_dataset, test_dataset, labels_infos[T_I][int(ratio):]
+    return train_dataset, test_dataset, labels_infos[ratio:]
 
 
 def create_test_dataset_diagnose():
@@ -213,7 +224,7 @@ def create_test_dataset_diagnose():
 
 def main():
     # trans_org_xlsx_to_json()  # transfer original data format from .xlsx to .json
-    # replace_indicator_to_word()  # replace indicator from number to word
+    # patient_infos, labels = replace_indicator_to_word()  # replace indicator from number to word
     # replace_indicator_to_description()  # replace indicator from number to description
 
     # # TODO: 1 create finetune-stage-1 dataset for aligning tabel with text
@@ -221,7 +232,10 @@ def main():
     # with open(save_align_finetune_dataset_path + file_names['align_finetune_dataset_json'], 'w') as f:
     #     json.dump(dataset, f, ensure_ascii=False)
 
-    # # TODO: 2 create finetune-stage-2 dataset for prediction
+    # test_dataset, labels_info = create_test_dataset_diagnose()
+
+    # # # TODO: 2 create finetune-stage-2 dataset for prediction
+    # create_train_test_dataset_diagnose()
     train_dataset, test_dataset, label_info = create_train_test_dataset_diagnose()
     # print(train_dataset[0], '\n', test_dataset[0], '\n', label_info[0])
     with open(save_diagnose_finetune_dataset_path + file_names['diagnose_finetune_dataset_json'], 'w') as f:
@@ -230,7 +244,6 @@ def main():
         json.dump(test_dataset, f, ensure_ascii=False)
     with open(save_diagnose_test_label_path + file_names['diagnose_test_label_json'], 'w') as f:
         json.dump(label_info, f, ensure_ascii=False)
-    # test_dataset, labels_info = create_test_dataset_diagnose()
 
 
 if __name__ == '__main__':

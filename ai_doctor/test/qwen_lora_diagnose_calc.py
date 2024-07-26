@@ -1,7 +1,11 @@
 import json, math
+import logging
+
 import numpy as np
 
-dir_ids = ['20240725-104805']
+DDOF = 0
+
+dir_ids = ['20240725-104805', '20240725-143158']
 base_model_dir = '/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/'
 lora_model_dir_pre = f'/data1/llm/houzm/98-model/01-qwen-vl-chat/qwen/Qwen-VL-Chat/hzm_qwen_finetune/diagnose/'
 
@@ -24,8 +28,12 @@ sensitivity_all = []  # 多次采样的敏感度
 specificity_all = []  # 多次采样的特异度
 f1_score_all = []  # 多次采样的F1
 
+
+logging.basicConfig(level=logging.INFO,format="[%(asctime)s]: %(message)s", datefmt="%Y-%M-%d %H:%M:%S")
+logger = logging.getLogger('-')
+
 for dir_id in dir_ids:
-    print(diagnose_test_dataset_json)
+    logger.info(lora_model_dir_pre + dir_id + diagnose_predict_result_json)
 
     with open(lora_model_dir_pre + dir_id + diagnose_test_dataset_json, 'r') as file:
         diagnose_test_dataset = json.load(file)
@@ -36,8 +44,7 @@ for dir_id in dir_ids:
 
     patient_cnt = len(label_info)
 
-    print("---- data count ----: ", patient_cnt)
-
+    logger.info("---- data count ----: %d", patient_cnt)
 
     correct = 0
     TP = 0
@@ -50,7 +57,7 @@ for dir_id in dir_ids:
         label, predict = label_info[i], pred_info[i]
         label = 1 if label else 0
 
-        print("id:", i, "predict: ", predict, "label: ", label)
+        # print("id:", i, "predict: ", predict, "label: ", label)
 
         if label == predict: correct += 1
 
@@ -63,7 +70,7 @@ for dir_id in dir_ids:
         elif label == F_T and predict == F_F:
             FN += 1
         else:
-            print('Prediction is not Yes and not No either, It is ', predict, ', GT is ', label)
+            logging.INFO('Prediction is not Yes and not No either, It is ', predict, ', GT is ', label)
 
     true_positive.append(TP)
     false_positive.append(FP)
@@ -90,12 +97,9 @@ for dir_id in dir_ids:
 
 print(result_all)
 
-print('平均准确率：', np.mean(result_all), np.mean(result_all), np.var(result_all), np.std(result_all, ddof=0))
-
-# print(true_positive)
-# print(false_positive)
-# print(true_negative)
-# print(false_negative)
+print('平均准确率：', np.mean(result_all))
+print('方差：', np.var(result_all))
+print('标准差：', np.std(result_all, ddof=0))
 
 print('平均灵敏度', np.mean(sensitivity_all))
 print('特异度', np.mean(specificity_all))
@@ -105,8 +109,8 @@ sample_num = len(dir_ids)
 
 # 计算95%置信区间
 print('---------准确率')
-bound1 = np.mean(result_all) + 1.96 * (np.std(result_all, ddof=1) / math.sqrt(sample_num))
-bound2 = np.mean(result_all) - 1.96 * (np.std(result_all, ddof=1) / math.sqrt(sample_num))
+bound1 = np.mean(result_all) + 1.96 * (np.std(result_all, ddof=DDOF) / math.sqrt(sample_num))
+bound2 = np.mean(result_all) - 1.96 * (np.std(result_all, ddof=DDOF) / math.sqrt(sample_num))
 print(bound1)
 print(bound2)
 print("{:.4f}".format(np.mean(result_all)), "{:.4f}".format(bound2), "{:.4f}".format(bound1),
@@ -114,25 +118,25 @@ print("{:.4f}".format(np.mean(result_all)), "{:.4f}".format(bound2), "{:.4f}".fo
 
 # 计算95%置信区间
 print('---------灵敏度')
-bound1 = np.mean(sensitivity_all) + 1.96 * (np.std(sensitivity_all, ddof=1) / math.sqrt(sample_num))
-bound2 = np.mean(sensitivity_all) - 1.96 * (np.std(sensitivity_all, ddof=1) / math.sqrt(sample_num))
+bound1 = np.mean(sensitivity_all) + 1.96 * (np.std(sensitivity_all, ddof=DDOF) / math.sqrt(sample_num))
+bound2 = np.mean(sensitivity_all) - 1.96 * (np.std(sensitivity_all, ddof=DDOF) / math.sqrt(sample_num))
 print("{:.4f}".format(np.mean(sensitivity_all)), "{:.4f}".format(bound2), "{:.4f}".format(bound1),
       "{:.4f}".format(bound1 - bound2))
 
 # 计算95%置信区间
 print('---------特异度')
-bound1 = np.mean(specificity_all) + 1.96 * (np.std(specificity_all, ddof=1) / math.sqrt(sample_num))
-bound2 = np.mean(specificity_all) - 1.96 * (np.std(specificity_all, ddof=1) / math.sqrt(sample_num))
+bound1 = np.mean(specificity_all) + 1.96 * (np.std(specificity_all, ddof=DDOF) / math.sqrt(sample_num))
+bound2 = np.mean(specificity_all) - 1.96 * (np.std(specificity_all, ddof=DDOF) / math.sqrt(sample_num))
 print("{:.4f}".format(np.mean(specificity_all)), "{:.4f}".format(bound2), "{:.4f}".format(bound1),
       "{:.4f}".format(bound1 - bound2))
 
 # 计算95%置信区间
 print('---------F1 score')
-bound1 = np.mean(f1_score_all) + 1.96 * (np.std(f1_score_all, ddof=1) / math.sqrt(sample_num))
-bound2 = np.mean(f1_score_all) - 1.96 * (np.std(f1_score_all, ddof=1) / math.sqrt(sample_num))
+bound1 = np.mean(f1_score_all) + 1.96 * (np.std(f1_score_all, ddof=DDOF) / math.sqrt(sample_num))
+bound2 = np.mean(f1_score_all) - 1.96 * (np.std(f1_score_all, ddof=DDOF) / math.sqrt(sample_num))
 print("{:.4f}".format(np.mean(f1_score_all)), "{:.4f}".format(bound2), "{:.4f}".format(bound1),
       "{:.4f}".format(bound1 - bound2))
 
-print(available_files, len(available_files))
+print("available_files_count: ", len(available_files))
 
-print(len(dir_ids))
+print("files_count: ", len(dir_ids))

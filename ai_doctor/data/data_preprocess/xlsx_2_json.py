@@ -1,6 +1,11 @@
 import json, yaml, os, glob, uuid
+import random
+
 import pandas as pd
 import numpy as np
+from math import gcd
+from functools import reduce
+import logging
 from config.map_dictor_to_word import W_Mapping, TYPE_INFO, TYPE_INDC
 from config.map_dictor_to_description import D_Mapping
 
@@ -25,6 +30,13 @@ fine_tune_diagnose_conf = s1_conf['fine_tune']['diagnose']
 prompt_conf = s1_conf['prompt'][LANGUAGE]
 
 table_ids = s1_conf['table_ids']  # table ids
+label_ids = s1_conf['label_ids']  # lable ids
+
+train_data_ratio = fine_tune_diagnose_conf['train_data_ratio']
+test_data_ratio = fine_tune_diagnose_conf['test_data_ratio']
+
+logging.basicConfig(format="[%(asctime)s]: %(message)s", datefmt="%Y-%M-%d %H:%M:%S", level=logging.INFO)
+logger = logging.getLogger('-')
 
 
 def trans_org_xlsx_to_json():
@@ -56,26 +68,21 @@ def replace_indicator_to_word():
     labels_info = []
     for sh_name in sheet_names:
         sh_df = df[sh_name]
-        sh_df = sh_df.sample(frac=1).reset_index(drop=True)  # shuffle
+        # sh_df = sh_df.sample(frac=1).reset_index(drop=True)  # shuffle
         sh_df_label = sh_df.iloc[:, 0]
         sh_df_data = sh_df.iloc[:, 1:]
         file_uid = sh_name.split('.')[1] + '_Mapping' if len(sh_name.split('.')) > 1 else sh_name
         mapping = W_Mapping[file_uid]
-        if mapping["type"] == TYPE_INFO:
-            for k, v in mapping["rule"].items():
-                sh_df_data[k] = sh_df_data[k].replace(v)
-        elif mapping["type"] == TYPE_INDC:
+        if mapping["type"] == TYPE_INDC:
             for k, v in mapping["rule"].items():
                 if not v: continue  # continue if indicator doesn't have rules
                 sh_df_data[k] = pd.cut(sh_df_data[k], bins=v["bins"], labels=v["labels"], right=False,
                                        include_lowest=False)
-        else:
-            print("ERROR: this type is not defined......")
         sh_df_data.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in
                               sh_df_data.columns]
-
+        be = "：" if sh_name == '1.DangerousFactor' else " is "  # TODO: 需要优化，暂时第一张用中文，第二种用英文
         rows_data = sh_df_data.apply(
-            lambda row: ','.join(f"{col_name} is {row[col_name]}" for col_name in sh_df_data.columns), axis=1)
+            lambda row: ','.join(f"{col_name}{be}{row[col_name]}" for col_name in sh_df_data.columns), axis=1)
         rows_str = rows_data.values.tolist()
 
         #     # # save to file
@@ -86,17 +93,13 @@ def replace_indicator_to_word():
     return patients_info, labels_info
 
 
-def process_row(row, rule_map, abbr_map):
+def process_row(row, abbr_map):
+    # row data: transfer json to text
     row_data = []
-    # if rule_map['type'] == TYPE_INFO:
-    #     return row.values
     for col in row.index:
         col_full_name = abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col
         if col_full_name == "label": continue
-        if rule_map['type'] == TYPE_INFO and col in rule_map['rule']:
-            row_data.append(row[col])
-        else:
-            row_data.append(f"{col_full_name}为{row[col]}")
+        row_data.append(f"{col_full_name}为{row[col]}")
     return ','.join(row_data) + '。'
 
 
@@ -111,15 +114,10 @@ def replace_indicator_to_description():
         sh_df = df[sh_name]
         file_uid = sh_name.split('.')[1] + '_Mapping' if len(sh_name.split('.')) > 1 else sh_name
         rule_map = D_Mapping[file_uid]
-        if rule_map["type"] == TYPE_INFO:
-            for k, v in rule_map["rule"].items():
-                sh_df[k] = sh_df[k].replace(v)
-        elif rule_map["type"] == TYPE_INDC:
+        if rule_map["type"] == TYPE_INDC:
             for k, v in rule_map["rule"].items():
                 if not v: continue
                 sh_df[k] = pd.cut(sh_df[k], bins=v["bins"], labels=v["labels"], right=False, include_lowest=False)
-        else:
-            print("ERROR: this type is not defined......")
         patients_disease_description = sh_df.apply(lambda row: process_row(row, rule_map, abbr_map), axis=1)
         patients_info.append(patients_disease_description.values)
 
@@ -162,32 +160,77 @@ def generate_patients_word_infos(patients_word_infos, labels_infos):
     pswis, lbis = np.array(patients_word_infos).T.tolist(), np.array(
         labels_infos).T.tolist()  # [[p_1_abc],[p_2_def],[p_3_ghi]]->[[p_1_adg],[]]
     patients_word_infos = [','.join(p_infos[i] for i in table_ids) for p_infos in pswis]
-    label_infos = [1 if sum(labels[i] for i in table_ids) else 0 for labels in lbis]
+    # label_infos = [1 if sum(labels) else 0 for labels in lbis]
+    label_infos = [labels[0] for labels in lbis]
     return patients_word_infos, label_infos
+
+
+def split_dataset(patients_word_infos, labels_infos):  # 拼接后的信息
+    train_data_set, test_data_set, train_data_labels, test_data_labels = [], [], [], []
+    dataset_size = len(labels_infos)
+    lable_counts = [labels_infos.count(lid) for lid in label_ids]
+    # non_zero_ratios_label = [num for num in ratios_label if num != 0]
+    # gcd_ratios = reduce(gcd, non_zero_ratios_label)  # greatest common divisor
+    # ratios_label_simple = [num // gcd_ratios for num in ratios_label]
+    logger.info('----------- label count ----------')
+    logger.info(lable_counts)
+    logger.info('----------------------------------')
+    sample_counts = [round(train_data_ratio * num) for num in lable_counts]
+    logger.info('----------- sample count ----------')
+    logger.info(sample_counts)
+    logger.info('----------------------------------')
+    cur_counts = [0] * len(label_ids)
+    for i in range(dataset_size):
+        lable = labels_infos[i]
+        if cur_counts[lable] < sample_counts[lable]:
+            train_data_set.append(patients_word_infos[i])
+            train_data_labels.append(lable)
+            cur_counts[lable] += 1
+        else:
+            test_data_set.append(patients_word_infos[i])
+            test_data_labels.append(lable)
+    logger.info('----------- split count ----------')
+    logger.info(cur_counts)
+    logger.info('----------------------------------')
+    logger.info('----------- data set info ----------')
+    logger.info('train_data_set: %d', len(train_data_set))
+    logger.info('train_data_labels: %d', len(train_data_labels))
+    logger.info('test_data_set: %d', len(test_data_set))
+    logger.info('test_data_labels: %d', len(test_data_labels))
+    logger.info('----------------------------------')
+    return train_data_set, test_data_set, train_data_labels, test_data_labels
+
+
+def shuffle_infos(patients_word_infos, labels_infos):
+    paired_list = list(zip(patients_word_infos, labels_infos))
+    random.shuffle(paired_list)
+    patients_word_infos, labels_infos = zip(*paired_list)
+    return list(patients_word_infos), list(labels_infos)
 
 
 def create_train_test_dataset_diagnose():
     patients_word_infos, labels_infos = replace_indicator_to_word()
     patients_word_infos, labels_infos = generate_patients_word_infos(patients_word_infos, labels_infos)
-    patient_cnt = len(labels_infos)
+    patients_word_infos, labels_infos = shuffle_infos(patients_word_infos, labels_infos)
+    org_train_dataset, org_test_dataset, train_data_labels, test_data_labels = split_dataset(patients_word_infos,
+                                                                                             labels_infos)
     train_dataset, test_dataset = [], []
-    ratio = int(patient_cnt * fine_tune_diagnose_conf['train_data_ratio'])
-    for i in range(ratio):
+    for i, patient_info in enumerate(org_train_dataset):
         user_value = (prompt_conf['finetune_diagnose_prefix']
-                      + patients_word_infos[i]
+                      + patient_info
                       + "。"
                       + prompt_conf['finetune_diagnose_require'])
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
-        ass_value = "Yes" if labels_infos[i] else "No"
+        ass_value = "Yes" if train_data_labels[i] else "No"
         patient_description = {'id': str(uuid.uuid4()),
                                'conversations': [{'from': 'user', 'value': user_value},
                                                  {'from': 'assistant', 'value': ass_value}],
                                'type': 'stage3'}
 
         train_dataset.append(patient_description)
-    for i in range(ratio, patient_cnt):
+    for i, patient_info in enumerate(org_test_dataset):
         patient_description = (prompt_conf['finetune_diagnose_prefix']
-                               + str(patients_word_infos[i])
+                               + patient_info
                                + "。"
                                + prompt_conf['finetune_diagnose_require']
                                # + prompt_conf['diagnose_in_context_learning']
@@ -195,14 +238,14 @@ def create_train_test_dataset_diagnose():
                                # + prompt_conf['diagnose_prompt_tools']
                                )
         test_dataset.append(patient_description)
-    return train_dataset, test_dataset, labels_infos[ratio:]
+    return train_dataset, test_dataset, test_data_labels
 
 
 def create_test_dataset_diagnose():
     patients_word_infos, labels_infos = replace_indicator_to_word()
     patient_cnt = min([len(p) for p in patients_word_infos])
     test_dataset = []
-    ratio = patient_cnt * fine_tune_diagnose_conf['train_data_ratio']
+    ratio = patient_cnt * train_data_ratio
     # print("前：", labels_infos[0][:int(ratio)])
     # print("后：", labels_infos[0][int(ratio):])
     for i in range(int(ratio), patient_cnt):
@@ -236,6 +279,7 @@ def main():
 
     # # # TODO: 2 create finetune-stage-2 dataset for prediction
     # create_train_test_dataset_diagnose()
+    logger.info(f'table ids: {table_ids}')
     train_dataset, test_dataset, label_info = create_train_test_dataset_diagnose()
     # print(train_dataset[0], '\n', test_dataset[0], '\n', label_info[0])
     with open(save_diagnose_finetune_dataset_path + file_names['diagnose_finetune_dataset_json'], 'w') as f:

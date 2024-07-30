@@ -78,11 +78,11 @@ mkdir -p $OUTPUT_DIR
 echo $OUTPUT_DIR
 
 # 1 生成 train and test dataset
-/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/python3.8 /data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_preprocess/xlsx_2_json.py
+/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/python3.8 /data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_preprocess/xlsx_2_json.py --task SC  2>&1 | tee "$OUTPUT_DIR/train_model.log"
 # 2 拷贝 dataset 到 训练脚本 目录下
 mkdir -p $OUTPUT_DIR/train_test_dataset
 cp -r /data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/data/data_finetune/diagnose/*.json $OUTPUT_DIR/train_test_dataset
 # 3 训练 模型
 eval $run_sh 2>&1 | tee "$OUTPUT_DIR/train_model.log"
 # 4 执行 预测
-/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/python3.8 /data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/test/qwen_lora_diagnose_test.py --dir-id $DIR_ID
+/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/python3.8 /data1/llm/houzm/99-code/01-Qwen-VL/ai_doctor/test/qwen_lora_diagnose_test.py --dir-id $DIR_ID  2>&1 | tee "$OUTPUT_DIR/train_model.log"

@@ -8,6 +8,7 @@ from functools import reduce
 import logging
 from config.map_dictor_to_word import W_Mapping, TYPE_INFO, TYPE_INDC
 from config.map_dictor_to_description import D_Mapping
+import argparse
 
 # Language
 LANGUAGE = 'en'
@@ -209,8 +210,8 @@ def shuffle_infos(patients_word_infos, labels_infos):
     return list(patients_word_infos), list(labels_infos)
 
 
-def generate_label(label):
-    if TASK == "MC":
+def generate_label(label, args):
+    if args.task == "MC":
         if label == 1:
             return "forme fruste keratoconus"
         elif label == 2:
@@ -222,11 +223,13 @@ def generate_label(label):
     else:
         return "Yes" if label else "No"
 
-def create_train_test_dataset_diagnose():
+
+def create_train_test_dataset_diagnose(args):
     patients_word_infos, labels_infos = replace_indicator_to_word()
     patients_word_infos, labels_infos = generate_patients_word_infos(patients_word_infos, labels_infos)
     logger.info('----------- all label infos [count_0, count_1, count_2, count_3] ----------')
-    logger.info('%d %d %d %d', labels_infos.count(0), labels_infos.count(1), labels_infos.count(2), labels_infos.count(3))
+    logger.info('%d %d %d %d', labels_infos.count(0), labels_infos.count(1), labels_infos.count(2),
+                labels_infos.count(3))
     logger.info('----------- ----------------------------------- ----------')
     patients_word_infos, labels_infos = shuffle_infos(patients_word_infos, labels_infos)
     org_train_dataset, org_test_dataset, train_data_labels, test_data_labels = split_dataset(patients_word_infos,
@@ -236,9 +239,13 @@ def create_train_test_dataset_diagnose():
         user_value = (prompt_conf['finetune_diagnose_prefix']
                       + patient_info
                       + "。"
-                      + prompt_conf['finetune_diagnose_require'])
+                      + prompt_conf['finetune_diagnose_require']
+                      + prompt_conf['diagnose_in_context_learning']
+                      + prompt_conf['diagnose_prompt_ltsbs']
+                      + prompt_conf['diagnose_prompt_tools']
+                      )
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
-        ass_value = generate_label(train_data_labels[i]) # "Yes" if train_data_labels[i] else "No"
+        ass_value = generate_label(train_data_labels[i], args)  # "Yes" if train_data_labels[i] else "No"
         patient_description = {'id': str(uuid.uuid4()),
                                'conversations': [{'from': 'user', 'value': user_value},
                                                  {'from': 'assistant', 'value': ass_value}],
@@ -250,9 +257,9 @@ def create_train_test_dataset_diagnose():
                                + patient_info
                                + "。"
                                + prompt_conf['finetune_diagnose_require']
-                               # + prompt_conf['diagnose_in_context_learning']
-                               # + prompt_conf['diagnose_prompt_ltsbs']
-                               # + prompt_conf['diagnose_prompt_tools']
+                               + prompt_conf['diagnose_in_context_learning']
+                               + prompt_conf['diagnose_prompt_ltsbs']
+                               + prompt_conf['diagnose_prompt_tools']
                                )
         test_dataset.append(patient_description)
     return train_dataset, test_dataset, test_data_labels
@@ -270,9 +277,9 @@ def create_test_dataset_diagnose():
                                + str(patients_word_infos[0][i])
                                + "。"
                                + prompt_conf['finetune_diagnose_require']
-                               # + prompt_conf['diagnose_in_context_learning']
-                               # + prompt_conf['diagnose_prompt_ltsbs']
-                               # + prompt_conf['diagnose_prompt_tools']
+                               + prompt_conf['diagnose_in_context_learning']
+                               + prompt_conf['diagnose_prompt_ltsbs']
+                               + prompt_conf['diagnose_prompt_tools']
                                )
 
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
@@ -282,7 +289,7 @@ def create_test_dataset_diagnose():
     return test_dataset, labels_infos[0][int(ratio):]
 
 
-def main():
+def main(args):
     # trans_org_xlsx_to_json()  # transfer original data format from .xlsx to .json
     # patient_infos, labels = replace_indicator_to_word()  # replace indicator from number to word
     # replace_indicator_to_description()  # replace indicator from number to description
@@ -297,7 +304,7 @@ def main():
     # # # TODO: 2 create finetune-stage-2 dataset for prediction
     # create_train_test_dataset_diagnose()
     logger.info(f'table ids: {table_ids}')
-    train_dataset, test_dataset, label_info = create_train_test_dataset_diagnose()
+    train_dataset, test_dataset, label_info = create_train_test_dataset_diagnose(args)
     # print(train_dataset[0], '\n', test_dataset[0], '\n', label_info[0])
     with open(save_diagnose_finetune_dataset_path + file_names['diagnose_finetune_dataset_json'], 'w') as f:
         json.dump(train_dataset, f, ensure_ascii=False)
@@ -308,4 +315,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description="Test  checkpoint.")
+
+    parser.add_argument(
+        "-o", "--task", type=str, default="SC"
+    )
+
+    args = parser.parse_args()
+
+    main(args)

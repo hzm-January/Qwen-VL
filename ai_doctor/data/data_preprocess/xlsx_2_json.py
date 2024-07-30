@@ -11,6 +11,7 @@ from config.map_dictor_to_description import D_Mapping
 
 # Language
 LANGUAGE = 'en'
+TASK = 'MC'  # 'SC'
 
 # 1 load config
 conf_path = r'/config/s1_align_conf.yaml'
@@ -208,9 +209,25 @@ def shuffle_infos(patients_word_infos, labels_infos):
     return list(patients_word_infos), list(labels_infos)
 
 
+def generate_label(label):
+    if TASK == "MC":
+        if label == 1:
+            return "forme fruste keratoconus"
+        elif label == 2:
+            return "subclinical keratoconus"
+        elif label == 3:
+            return "clinical keratoconus"
+        else:
+            return "No"
+    else:
+        return "Yes" if label else "No"
+
 def create_train_test_dataset_diagnose():
     patients_word_infos, labels_infos = replace_indicator_to_word()
     patients_word_infos, labels_infos = generate_patients_word_infos(patients_word_infos, labels_infos)
+    logger.info('----------- all label infos [count_0, count_1, count_2, count_3] ----------')
+    logger.info('%d %d %d %d', labels_infos.count(0), labels_infos.count(1), labels_infos.count(2), labels_infos.count(3))
+    logger.info('----------- ----------------------------------- ----------')
     patients_word_infos, labels_infos = shuffle_infos(patients_word_infos, labels_infos)
     org_train_dataset, org_test_dataset, train_data_labels, test_data_labels = split_dataset(patients_word_infos,
                                                                                              labels_infos)
@@ -221,7 +238,7 @@ def create_train_test_dataset_diagnose():
                       + "。"
                       + prompt_conf['finetune_diagnose_require'])
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
-        ass_value = "Yes" if train_data_labels[i] else "No"
+        ass_value = generate_label(train_data_labels[i]) # "Yes" if train_data_labels[i] else "No"
         patient_description = {'id': str(uuid.uuid4()),
                                'conversations': [{'from': 'user', 'value': user_value},
                                                  {'from': 'assistant', 'value': ass_value}],

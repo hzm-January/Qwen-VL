@@ -63,10 +63,11 @@ def main(args):
     predicts = []
     for i in range(patient_cnt):
         # print(diagnose_test_dataset[i])
+        query = diagnose_test_dataset[i]+''
         response, history = model.chat(tokenizer,
                                        query=diagnose_test_dataset[i],
                                        history=None)
-        # print(response)
+        logger.info(response)
         # new_query = diagnose_test_dataset[i]+"请根据检测结果诊断该人员是否患有圆锥角膜病。"
         # response, history = model.chat(tokenizer, query=new_query, history=history)
         # label = F_T if label_info[i] else F_F
@@ -75,7 +76,8 @@ def main(args):
         label = label_info[i]
         label = 1 if label else 0
 
-        predict = 1 if response == "Yes" else 0
+        # predict = 1 if response == "Yes" else 0
+        predict = 1 if 'yes' in response.lower() else 0
         logger.info("id: %d, predict: %d, label: %d", i, predict, label)
 
         predicts.append(predict)

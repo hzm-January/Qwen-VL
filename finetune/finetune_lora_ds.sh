@@ -1,10 +1,10 @@
 #!/bin/bash
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-export CUDA_VISIBLE_DEVICES=0,2,3,4
+export CUDA_VISIBLE_DEVICES=2,3,4
 
 DIR=`pwd`
 
-GPUS_PER_NODE=4
+GPUS_PER_NODE=3
 NNODES=1
 NODE_RANK=0
 MASTER_ADDR=localhost
@@ -51,8 +51,8 @@ run_sh="/data1/llm/anaconda3/envs/hzm-qwen-vl/bin/torchrun  $DISTRIBUTED_ARGS /d
     --bf16 True \
     --fix_vit True \
     --output_dir $OUTPUT_DIR \
-    --num_train_epochs 2 \
-    --per_device_train_batch_size 1\
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 3\
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \

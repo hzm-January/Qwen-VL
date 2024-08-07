@@ -62,7 +62,7 @@ def main(args):
         response, history = model.chat(tokenizer,
                                        query=diagnose_test_dataset[i],
                                        history=None)
-        # print(response)
+        print(response)
         # new_query = diagnose_test_dataset[i]+"请根据检测结果诊断该人员是否患有圆锥角膜病。"
         # response, history = model.chat(tokenizer, query=new_query, history=history)
         # label = F_T if label_info[i] else F_F
@@ -71,7 +71,7 @@ def main(args):
         label = label_info[i]
         label = 1 if label else 0
 
-        predict = 1 if response == F_T else 0
+        predict = 1 if 'yes' in response.lower() else 0
         print("id:", i, "predict: ", predict, "label: ", label)
 
         predicts.append(predict)

@@ -95,6 +95,30 @@ def replace_indicator_to_word():
     return patients_info, labels_info
 
 
+def save_column_names():
+    am_df = pd.read_excel(load_path + file_names['abbr_mapping'], sheet_name=0)
+    abbr_map = dict(zip(am_df[am_df.columns[0]], am_df[am_df.columns[1]]))
+    df = pd.read_excel(load_path + file_names['org_data_xlsx'], sheet_name=None)
+    sheet_names = list(df.keys())
+    print(sheet_names)
+    columns_name = []
+    for i, sh_name in enumerate(sheet_names):
+        if i not in table_ids: continue
+        sh_df = df[sh_name]
+        # sh_df = sh_df.sample(frac=1).reset_index(drop=True)  # shuffle
+        sh_df_label = sh_df.iloc[:, 0]
+        sh_df_data = sh_df.iloc[:, 1:]
+        file_uid = sh_name.split('.')[1] + '_Mapping' if len(sh_name.split('.')) > 1 else sh_name
+        sh_df_data.columns = [abbr_map.get(col, col) if not pd.isna(abbr_map.get(col)) else col for col in
+                              sh_df_data.columns]
+
+        #     # # save to file
+        #     # sh_df.to_json((save_word_json_path + file_names['word_data_json']).format(sh_name.replace('.', '_')),
+        #     #               orient='records', force_ascii=False)
+        columns_name.extend(sh_df_data.columns.tolist())
+    return columns_name
+
+
 def process_row(row, abbr_map):
     # row data: transfer json to text
     row_data = []
@@ -240,9 +264,10 @@ def create_train_test_dataset_diagnose(args):
                       + patient_info
                       + "。"
                       + prompt_conf['finetune_diagnose_require']
-                      + prompt_conf['diagnose_in_context_learning']
-                      + prompt_conf['diagnose_prompt_ltsbs']
-                      + prompt_conf['diagnose_prompt_tools']
+                      + prompt_conf['finetune_answer_require']
+                      # + prompt_conf['diagnose_in_context_learning']
+                      # + prompt_conf['diagnose_prompt_ltsbs']
+                      # + prompt_conf['diagnose_prompt_tools']
                       )
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
         ass_value = generate_label(train_data_labels[i], args)  # "Yes" if train_data_labels[i] else "No"
@@ -257,9 +282,10 @@ def create_train_test_dataset_diagnose(args):
                                + patient_info
                                + "。"
                                + prompt_conf['finetune_diagnose_require']
-                               + prompt_conf['diagnose_in_context_learning']
-                               + prompt_conf['diagnose_prompt_ltsbs']
-                               + prompt_conf['diagnose_prompt_tools']
+                               + prompt_conf['finetune_answer_require']
+                               # + prompt_conf['diagnose_in_context_learning']
+                               # + prompt_conf['diagnose_prompt_ltsbs']
+                               # + prompt_conf['diagnose_prompt_tools']
                                )
         test_dataset.append(patient_description)
     return train_dataset, test_dataset, test_data_labels
@@ -279,7 +305,7 @@ def create_test_dataset_diagnose():
                                + prompt_conf['finetune_diagnose_require']
                                + prompt_conf['diagnose_in_context_learning']
                                + prompt_conf['diagnose_prompt_ltsbs']
-                               + prompt_conf['diagnose_prompt_tools']
+                               # + prompt_conf['diagnose_prompt_tools']
                                )
 
         # ass_value = "诊断结果为：圆锥角膜病。" if labels_infos[0][i] else "诊断结果为：角膜正常。"
@@ -301,7 +327,13 @@ def main(args):
 
     # test_dataset, labels_info = create_test_dataset_diagnose()
 
-    # # # TODO: 2 create finetune-stage-2 dataset for prediction
+    # TODO: 2 save column names
+    # columns = save_column_names()
+    # logger.info(f'----columns: {columns}')
+    # with open(save_org_json_path + 'patient_infos_column_name_'+'_'.join(str(i) for i in table_ids)+'.json', 'w') as f:
+    #     json.dump(columns, f, ensure_ascii=False)
+
+    # # # TODO: 3 create finetune-stage-2 dataset for prediction
     # create_train_test_dataset_diagnose()
     logger.info(f'table ids: {table_ids}')
     train_dataset, test_dataset, label_info = create_train_test_dataset_diagnose(args)
